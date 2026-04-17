@@ -1,0 +1,2099 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, doc, setDoc, collection, onSnapshot, updateDoc, deleteDoc } from 'firebase/firestore';
+import { 
+  GraduationCap, Trophy, Wallet, PiggyBank, TrendingUp, 
+  Send, ChevronDown, Heart, RefreshCw, Medal, Target, 
+  History, ChartColumn, Minus, Lock, Settings, Menu, LogOut,
+  ArrowUpRight, Building, Plus, AlertCircle, Calendar, Loader2,
+  Store, Trash2, Coins, ReceiptText, Check, Gift, Undo2, Edit3
+} from 'lucide-react';
+
+// --- [Firebase Initialization] ---
+const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'hh-economy-class';
+
+// --- [Constants & Mock Initial Data] ---
+const INITIAL_BANK_PRODUCTS = [
+  { id: 'test', name: '테스트용 (1분)', days: 0, rate: 0.01, rateText: '1.0%' },
+  { id: 'short', name: '단기 적금 (7일)', days: 7, rate: 0.03, rateText: '3.0%' },
+  { id: 'mid', name: '2주 적금 (14일)', days: 14, rate: 0.07, rateText: '7.0%' },
+  { id: 'long', name: '장기 적금 (30일)', days: 30, rate: 0.15, rateText: '15.0%' },
+];
+
+const INITIAL_STORE_PRODUCTS = [
+  { id: '1', name: '자리 바꾸기', desc: '원하는 자리로 바꿀 수 있습니다.', price: 10000, stock: 99, icon: '🪑', refundable: true, refundLimitHours: 24 },
+  { id: '2', name: '하루종일 슬리퍼 신기', desc: '편안하게 하루를 보내세요.', price: 3000, stock: 99, icon: '🩴', refundable: true, refundLimitHours: 24 },
+  { id: '3', name: '숙제 1회 면제권', desc: '숙제를 한 번 쉴 수 있습니다.', price: 5000, stock: 99, icon: '📓', refundable: true, refundLimitHours: 24 },
+  { id: '4', name: '노래 1곡 틀기', desc: '원하는 노래를 신청하세요.', price: 1000, stock: 99, icon: '🎵', refundable: true, refundLimitHours: 24 },
+  { id: '5', name: '청소 면제권', desc: '오늘 청소는 패스!', price: 3000, stock: 99, icon: '✨', refundable: true, refundLimitHours: 24 },
+  { id: '6', name: '1일 도우미 면제', desc: '도우미 역할을 하루 면제받습니다.', price: 2000, stock: 99, icon: '👤', refundable: true, refundLimitHours: 24 },
+  { id: '7', name: '수업시간 물 마시기', desc: '수업 중 자유롭게 수분 섭취.', price: 1000, stock: 99, icon: '💧', refundable: true, refundLimitHours: 24 },
+  { id: '8', name: '보드게임 1회권', desc: '보드게임을 즐기세요.', price: 2000, stock: 99, icon: '🎲', refundable: true, refundLimitHours: 24 },
+  { id: '9', name: '체육 1시간 자유', desc: '자유 체육 시간을 즐기세요.', price: 50000, stock: 99, icon: '⚽', refundable: true, refundLimitHours: 24 },
+  { id: '10', name: '간식 (자유)', desc: '맛있는 간식 타임.', price: 5000, stock: 99, icon: '🍪', refundable: true, refundLimitHours: 24 },
+  { id: '11', name: '영화보기 1시간', desc: '다함께 영화를 봅니다.', price: 50000, stock: 99, icon: '🎬', refundable: true, refundLimitHours: 24 },
+  { id: '12', name: '유튜브 1시간 시청', desc: '원하는 영상을 시청하세요.', price: 50000, stock: 99, icon: '▶️', refundable: true, refundLimitHours: 24 },
+];
+
+const USERS_DATA = [
+  { id: '1', name: '강유주', pass: '6701', role: 'student' },
+  { id: '2', name: '고윤서', pass: '6702', role: 'student' },
+  { id: '3', name: '공윤호', pass: '6703', role: 'student' },
+  { id: '4', name: '김성민', pass: '6704', role: 'student' },
+  { id: '5', name: '김태윤', pass: '6705', role: 'student' },
+  { id: '6', name: '나현웅', pass: '6706', role: 'student' },
+  { id: '7', name: '류찬혁', pass: '6707', role: 'student' },
+  { id: '8', name: '문예린', pass: '6708', role: 'student' },
+  { id: '9', name: '박소율', pass: '6709', role: 'student' },
+  { id: '10', name: '박채윤', pass: '6710', role: 'student' },
+  { id: '11', name: '배예람', pass: '6711', role: 'student' },
+  { id: '12', name: '백한율', pass: '6712', role: 'student' },
+  { id: '13', name: '우은서', pass: '6713', role: 'student' },
+  { id: '14', name: '우진서', pass: '6714', role: 'student' },
+  { id: '15', name: '윤소영', pass: '6715', role: 'student' },
+  { id: '16', name: '임소윤', pass: '6716', role: 'student' },
+  { id: '17', name: '임수현', pass: '6717', role: 'student' },
+  { id: '18', name: '정시후', pass: '6718', role: 'student' },
+  { id: '19', name: '조수빈', pass: '6719', role: 'student' },
+  { id: '20', name: '최리한', pass: '6720', role: 'student' },
+  { id: '21', name: '최은수', pass: '6721', role: 'student' },
+  { id: '22', name: '최준성', pass: '6722', role: 'student' },
+  { id: '23', name: '하예준', pass: '6723', role: 'student' },
+  { id: '24', name: '허단', pass: '6724', role: 'student' },
+  { id: 'admin', name: '관리자 (선생님)', pass: '1111', role: 'admin' },
+];
+
+const donationGoals = [
+  { title: '도비는 자유예요', desc: '1시간의 자유시간을 획득합니다.', current: 8295, target: 100000 },
+  { title: '우리 반 과자파티!', desc: '과자파티를 엽니다.', current: 49115, target: 200000 },
+];
+
+// --- [Helper Functions] ---
+const formatMoney = (num) => new Intl.NumberFormat('ko-KR').format(num) + 'G';
+
+const formatDate = (date) => {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  const hh = String(date.getHours()).padStart(2, '0');
+  const min = String(date.getMinutes()).padStart(2, '0');
+  return `${yyyy}.${mm}.${dd} ${hh}:${min}`;
+};
+
+const parseAmount = (amountStr) => parseInt(String(amountStr).replace(/[^0-9]/g, ''), 10) || 0;
+
+const Badge = ({ children, type }) => {
+  const styles = {
+    positive: 'bg-purple-100 text-purple-700 border-purple-200',
+    negative: 'bg-fuchsia-100 text-fuchsia-700 border-fuchsia-200',
+    neutral: 'bg-violet-100 text-violet-700 border-violet-200'
+  };
+  return (
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border ${styles[type]}`}>
+      {children}
+    </span>
+  );
+};
+
+// --- [Custom UI Components] ---
+const CustomDropdown = ({ options, value, onChange, placeholder }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => { if (ref.current && !ref.current.contains(e.target)) setIsOpen(false); };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectedLabel = options.find(o => String(o.value) === String(value))?.label;
+
+  return (
+    <div className="relative" ref={ref}>
+      <div 
+        onClick={() => setIsOpen(!isOpen)} 
+        className="w-full bg-purple-50/50 border-2 border-purple-100 hover:border-purple-300 text-purple-900 rounded-2xl px-5 py-4 cursor-pointer flex justify-between items-center transition-all font-bold"
+      >
+        <span>{selectedLabel || placeholder}</span>
+        <ChevronDown className={`w-5 h-5 text-purple-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </div>
+      {isOpen && (
+        <div className="absolute top-full left-0 w-full bg-white border-2 border-purple-100 rounded-2xl shadow-xl z-50 max-h-60 overflow-y-auto mt-2 p-2 scrollbar-hide">
+          {options.map(o => (
+            <div 
+              key={o.value} 
+              onClick={() => { onChange(o.value); setIsOpen(false); }} 
+              className={`p-3 rounded-xl cursor-pointer font-bold transition-colors ${String(value) === String(o.value) ? 'bg-purple-600 text-white' : 'text-purple-800 hover:bg-purple-50'}`}
+            >
+              {o.label}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const CustomMultiSelect = ({ options, selectedValues, onChange, placeholder }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => { if (ref.current && !ref.current.contains(e.target)) setIsOpen(false); };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const toggle = (val) => {
+    if (selectedValues.includes(val)) onChange(selectedValues.filter(v => v !== val));
+    else onChange([...selectedValues, val]);
+  };
+
+  const toggleAll = () => {
+    if (selectedValues.length === options.length) onChange([]);
+    else onChange(options.map(o => o.value));
+  };
+
+  return (
+    <div className="relative" ref={ref}>
+      <div 
+        onClick={() => setIsOpen(!isOpen)} 
+        className="w-full bg-purple-50/50 border-2 border-purple-100 hover:border-purple-300 text-purple-900 rounded-2xl px-5 py-4 cursor-pointer flex justify-between items-center transition-all font-bold"
+      >
+        <span className="truncate">
+          {selectedValues.length > 0 ? `${selectedValues.length}명 선택됨` : placeholder}
+        </span>
+        <ChevronDown className={`w-5 h-5 text-purple-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </div>
+      {isOpen && (
+        <div className="absolute top-full left-0 w-full bg-white border-2 border-purple-100 rounded-2xl shadow-xl z-50 max-h-72 overflow-y-auto mt-2 p-2 flex flex-col gap-1">
+          <div onClick={toggleAll} className="p-3 rounded-xl cursor-pointer font-bold text-center bg-purple-100 text-purple-700 hover:bg-purple-200 transition-colors mb-1">
+            {selectedValues.length === options.length ? '전체 해제' : '전체 선택'}
+          </div>
+          {options.map(o => (
+            <div 
+              key={o.value} 
+              onClick={() => toggle(o.value)} 
+              className={`p-3 rounded-xl cursor-pointer font-bold transition-colors flex items-center justify-between ${selectedValues.includes(o.value) ? 'bg-purple-50 text-purple-900' : 'text-purple-700 hover:bg-purple-50/50'}`}
+            >
+              {o.label}
+              <div className={`w-6 h-6 rounded-md flex items-center justify-center border-2 transition-colors ${selectedValues.includes(o.value) ? 'bg-purple-600 border-purple-600 text-white' : 'border-purple-200 bg-white'}`}>
+                {selectedValues.includes(o.value) && <Check className="w-4 h-4" />}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// --- [Main App Component] ---
+export default function App() {
+  const [userAuth, setUserAuth] = useState(null);
+  const [currentUser, setCurrentUser] = useState(null); 
+  
+  // 실시간 DB 상태
+  const [isDBLoaded, setIsDBLoaded] = useState(false);
+  const [usersDB, setUsersDB] = useState({});
+  const [depositsDB, setDepositsDB] = useState({});
+  const [transactionsDB, setTransactionsDB] = useState([]);
+  const [bankProductsDB, setBankProductsDB] = useState([]);
+  const [storeProductsDB, setStoreProductsDB] = useState([]);
+  const [inventoryDB, setInventoryDB] = useState([]);
+
+  const [currentView, setCurrentView] = useState('dashboard');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  
+  // 커스텀 알림창 관련 상태
+  const [alertData, setAlertData] = useState(null);
+  const [confirmData, setConfirmData] = useState(null);
+  const [promptData, setPromptData] = useState(null);
+  
+  // 모달 기능 호출 함수
+  const showAlert = (message) => setAlertData({ message });
+  const showConfirm = (message, onConfirm) => setConfirmData({ message, onConfirm });
+  const showPrompt = (title, message, defaultValue, onConfirm) => setPromptData({ title, message, value: defaultValue, onConfirm });
+
+  // 1. 파이어베이스 접속 및 인증
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (error) { console.error('Auth error', error); }
+    };
+    initAuth();
+    const unsubscribe = onAuthStateChanged(auth, setUserAuth);
+    return () => unsubscribe();
+  }, []);
+
+  // 2. 실시간 데이터베이스 동기화 (Sandbox 내장 Firestore로 복구)
+  useEffect(() => {
+    if (!userAuth) return;
+
+    const usersRef = collection(db, 'artifacts', appId, 'public', 'data', 'economy_users');
+    const depositsRef = collection(db, 'artifacts', appId, 'public', 'data', 'economy_deposits');
+    const txsRef = collection(db, 'artifacts', appId, 'public', 'data', 'economy_transactions');
+    const bankProdRef = collection(db, 'artifacts', appId, 'public', 'data', 'economy_bank_products');
+    const storeProdRef = collection(db, 'artifacts', appId, 'public', 'data', 'economy_store_products');
+    const inventoryRef = collection(db, 'artifacts', appId, 'public', 'data', 'economy_inventory');
+
+    const loadData = async () => {
+      const unsubUsers = onSnapshot(usersRef, async (snap) => {
+        if (snap.empty) {
+          // 최초 로드 시 모든 사용자를 0원으로 초기화
+          const promises = USERS_DATA.map(u => 
+            setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'economy_users', String(u.id)), {
+              ...u, cash: 0, deposit: 0, stock: 0, level: 1, donated: 0
+            })
+          );
+          await Promise.all(promises);
+        }
+        
+        const map = {};
+        snap.forEach(d => { map[d.id] = d.data(); });
+        setUsersDB(map);
+        setIsDBLoaded(true); // 항상 로드 완료 상태로 변경
+      }, (err) => {
+        console.error("DB Load Error", err);
+        setIsDBLoaded(true);
+      });
+
+      const unsubDeps = onSnapshot(depositsRef, (snap) => {
+        const map = {};
+        snap.forEach(d => { map[d.id] = d.data(); });
+        setDepositsDB(map);
+      });
+
+      const unsubTxs = onSnapshot(txsRef, (snap) => {
+        const arr = [];
+        snap.forEach(d => arr.push(d.data()));
+        arr.sort((a,b) => b.timestamp - a.timestamp);
+        setTransactionsDB(arr);
+      });
+
+      const unsubBankProd = onSnapshot(bankProdRef, async (snap) => {
+        if (snap.empty) {
+          const promises = INITIAL_BANK_PRODUCTS.map(p => 
+            setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'economy_bank_products', p.id), p)
+          );
+          await Promise.all(promises);
+        } else {
+          const arr = [];
+          snap.forEach(d => arr.push(d.data()));
+          arr.sort((a,b) => a.days - b.days);
+          setBankProductsDB(arr);
+        }
+      });
+
+      const unsubStoreProd = onSnapshot(storeProdRef, async (snap) => {
+        if (snap.empty) {
+          const promises = INITIAL_STORE_PRODUCTS.map(p => 
+            setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'economy_store_products', p.id), p)
+          );
+          await Promise.all(promises);
+        } else {
+          const arr = [];
+          snap.forEach(d => arr.push(d.data()));
+          setStoreProductsDB(arr);
+        }
+      });
+
+      const unsubInventory = onSnapshot(inventoryRef, (snap) => {
+        const arr = [];
+        snap.forEach(d => arr.push(d.data()));
+        arr.sort((a,b) => b.purchasedAt - a.purchasedAt);
+        setInventoryDB(arr);
+      });
+
+      return () => { unsubUsers(); unsubDeps(); unsubTxs(); unsubBankProd(); unsubStoreProd(); unsubInventory(); };
+    };
+
+    const cleanup = loadData();
+    return () => {
+      cleanup.then(fn => fn && fn());
+    };
+  }, [userAuth]);
+
+  // --- Handlers ---
+  const handleLogin = (userId, password) => {
+    const user = usersDB[userId];
+    if (!user) {
+      showAlert('서버에 존재하지 않는 사용자입니다.');
+      return;
+    }
+    if (String(user.pass) !== String(password)) {
+      showAlert('비밀번호가 일치하지 않습니다.');
+      return;
+    }
+    setCurrentUser(userId);
+    setCurrentView('dashboard');
+  };
+
+  const handleLogout = () => {
+    showConfirm('정말 로그아웃 하시겠습니까?', () => {
+      setCurrentUser(null);
+      setCurrentView('dashboard');
+    });
+  };
+
+  const handleChangePassword = async (currentPass, newPass, confirmNewPass) => {
+    const user = usersDB[currentUser];
+    if (String(user.pass) !== String(currentPass)) {
+      showAlert('현재 비밀번호가 일치하지 않습니다.');
+      return false;
+    }
+    if (newPass !== confirmNewPass) {
+      showAlert('새 비밀번호가 일치하지 않습니다. 다시 확인해주세요.');
+      return false;
+    }
+    if (newPass.length < 4) {
+      showAlert('비밀번호는 최소 4자리 이상이어야 합니다.');
+      return false;
+    }
+    
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'economy_users', currentUser), {
+      pass: newPass
+    });
+    showAlert('비밀번호가 성공적으로 변경되었습니다!');
+    return true;
+  };
+
+  const handleTransfer = async (targetId, amount) => {
+    const user = usersDB[currentUser];
+    const targetUser = usersDB[targetId];
+    
+    if (amount > user.cash) {
+      showAlert('보유 현금이 부족하여 송금할 수 없습니다.');
+      return;
+    }
+
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'economy_users', currentUser), { cash: user.cash - amount });
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'economy_users', targetId), { cash: targetUser.cash + amount });
+
+    const txDocRef1 = doc(collection(db, 'artifacts', appId, 'public', 'data', 'economy_transactions'));
+    await setDoc(txDocRef1, {
+      id: txDocRef1.id, userId: currentUser, date: formatDate(new Date()), timestamp: Date.now(),
+      type: '송금', desc: `${targetUser.name}님에게 이체`, amount: `-${formatMoney(amount)}`, balance: formatMoney(user.cash - amount), isPositive: false
+    });
+
+    const txDocRef2 = doc(collection(db, 'artifacts', appId, 'public', 'data', 'economy_transactions'));
+    await setDoc(txDocRef2, {
+      id: txDocRef2.id, userId: targetId, date: formatDate(new Date()), timestamp: Date.now() + 1,
+      type: '입금', desc: `${user.name}님으로부터 입금`, amount: `+${formatMoney(amount)}`, balance: formatMoney(targetUser.cash + amount), isPositive: true
+    });
+
+    showAlert(`${targetUser.name}님에게 ${formatMoney(amount)} 송금을 완료했습니다.`);
+  };
+
+  // 기부하기
+  const handleDonate = async (amount) => {
+    const user = usersDB[currentUser];
+    if (amount > user.cash) {
+      showAlert('보유 현금이 부족합니다.');
+      return;
+    }
+
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'economy_users', currentUser), {
+      cash: user.cash - amount,
+      donated: (user.donated || 0) + amount
+    });
+
+    const txDocRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'economy_transactions'));
+    await setDoc(txDocRef, {
+      id: txDocRef.id, userId: currentUser, date: formatDate(new Date()), timestamp: Date.now(),
+      type: '기부', desc: '학급 목표 달성을 위한 기부', amount: `-${formatMoney(amount)}`, balance: formatMoney(user.cash - amount), isPositive: false
+    });
+
+    showAlert(`${formatMoney(amount)} 기부 완료! 따뜻한 마음에 감사합니다.`);
+  };
+
+  // 관리자 자산 관리 (돈 채우기/버리기) - 본인 전용
+  const handleAdminSelfAsset = async (actionType, amount) => {
+    const user = usersDB[currentUser];
+    let newBalance = user.cash;
+    let desc = '';
+    let amtStr = '';
+
+    if (actionType === 'add') {
+      newBalance += amount;
+      desc = '관리자 본인 자산 추가 (돈 채우기)';
+      amtStr = `+${formatMoney(amount)}`;
+    } else {
+      newBalance = Math.max(0, newBalance - amount);
+      desc = '관리자 본인 자산 차감 (돈 버리기)';
+      amtStr = `-${formatMoney(amount)}`;
+    }
+
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'economy_users', currentUser), { cash: newBalance });
+
+    const txDocRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'economy_transactions'));
+    await setDoc(txDocRef, {
+      id: txDocRef.id, userId: currentUser, date: formatDate(new Date()), timestamp: Date.now(),
+      type: '시스템 (관리자)', desc: desc, amount: amtStr, balance: formatMoney(newBalance), isPositive: actionType === 'add'
+    });
+
+    showAlert('본인의 자산이 업데이트되었습니다.');
+  };
+
+  // 관리자 권한 - 학생 자산 일괄 지급/차감
+  const handleAdminMintBurn = async (targetIds, actionType, amount, reason) => {
+    if (!targetIds || targetIds.length === 0) return;
+
+    let txType = actionType === 'add' ? '시스템 지급' : '시스템 차감';
+    let amountStr = actionType === 'add' ? `+${formatMoney(amount)}` : `-${formatMoney(amount)}`;
+    let isPos = actionType === 'add';
+
+    const promises = targetIds.map(async (tid, idx) => {
+      const targetUser = usersDB[tid];
+      if (!targetUser) return;
+      let newBalance = targetUser.cash;
+      
+      if (actionType === 'add') {
+        newBalance += amount;
+      } else {
+        newBalance = Math.max(0, newBalance - amount);
+      }
+
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'economy_users', tid), { cash: newBalance });
+
+      const txDocRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'economy_transactions'));
+      await setDoc(txDocRef, {
+        id: txDocRef.id, userId: tid, date: formatDate(new Date()), timestamp: Date.now() + idx,
+        type: txType, desc: `관리자: ${reason}`, amount: amountStr, balance: formatMoney(newBalance), isPositive: isPos
+      });
+    });
+
+    await Promise.all(promises);
+    showAlert(`총 ${targetIds.length}명의 자산을 성공적으로 변경했습니다.`);
+  };
+
+  // 관리자 권한 - 내역 취소/삭제 (금액 복구)
+  const handleAdminDeleteTx = async (tx) => {
+    showConfirm('이 거래 내역을 삭제하시겠습니까?\n해당 거래로 인한 현금 증감액이 반대로 복구됩니다.', async () => {
+      const user = usersDB[tx.userId];
+      if (!user) {
+        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'economy_transactions', tx.id));
+        showAlert('사용자를 찾을 수 없어 내역만 삭제되었습니다.');
+        return;
+      }
+
+      const parsedAmt = parseAmount(tx.amount);
+      let newCash = user.cash;
+
+      if (tx.isPositive) {
+        newCash = Math.max(0, newCash - parsedAmt);
+      } else {
+        newCash += parsedAmt;
+      }
+
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'economy_users', tx.userId), { cash: newCash });
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'economy_transactions', tx.id));
+      
+      const cancelTxRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'economy_transactions'));
+      await setDoc(cancelTxRef, {
+        id: cancelTxRef.id, userId: tx.userId, date: formatDate(new Date()), timestamp: Date.now(),
+        type: '내역 취소', desc: `관리자 내역 삭제로 인한 복구: ${tx.desc}`, 
+        amount: tx.isPositive ? `-${formatMoney(parsedAmt)}` : `+${formatMoney(parsedAmt)}`, 
+        balance: formatMoney(newCash), isPositive: !tx.isPositive
+      });
+
+      showAlert('거래 내역이 삭제되고 금액이 복구되었습니다.');
+    });
+  };
+
+  // 관리자 권한 - 내역 일부 편집
+  const handleAdminEditTx = (tx) => {
+    const oldAmt = parseAmount(tx.amount);
+    showPrompt('거래 금액 수정', `'${tx.desc}' 내역의 금액을 수정합니다. (기존: ${formatMoney(oldAmt)})`, oldAmt, async (newAmtStr) => {
+      const newAmt = parseInt(newAmtStr, 10);
+      if (isNaN(newAmt) || newAmt < 0) { showAlert('올바른 금액을 입력하세요.'); return; }
+      if (newAmt === oldAmt) return;
+
+      const user = usersDB[tx.userId];
+      if (!user) return;
+
+      let newCash = user.cash;
+      if (tx.isPositive) {
+        newCash = newCash - oldAmt + newAmt;
+      } else {
+        newCash = newCash + oldAmt - newAmt;
+      }
+      if (newCash < 0) newCash = 0;
+
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'economy_users', tx.userId), { cash: newCash });
+      
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'economy_transactions', tx.id), {
+        amount: tx.isPositive ? `+${formatMoney(newAmt)}` : `-${formatMoney(newAmt)}`,
+        balance: formatMoney(newCash),
+        desc: tx.desc + ' (수정됨)'
+      });
+
+      showAlert('거래 내역 금액이 수정되었습니다.');
+    });
+  };
+
+  // 관리자 권한 - 전체 자산 0으로 초기화
+  const handleAdminResetAssets = async () => {
+    showConfirm('위험: 모든 학생의 현금, 예금, 증권 자산을 0으로 초기화하시겠습니까?\n이 작업은 되돌릴 수 없습니다.', async () => {
+      const promises = Object.values(usersDB).map(u => 
+        updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'economy_users', u.id), { cash: 0, deposit: 0, stock: 0 })
+      );
+      await Promise.all(promises);
+      showAlert('전체 학생의 자산이 0으로 초기화되었습니다.');
+    });
+  };
+
+  const handleCreateDeposit = async (depositInfo) => {
+    const { name, amount, product } = depositInfo;
+    const user = usersDB[currentUser];
+    
+    if (amount > user.cash) {
+      showAlert('보유 현금이 부족합니다.');
+      return;
+    }
+
+    const now = new Date();
+    const maturityDate = new Date(now);
+    
+    if (product.id === 'test') {
+      maturityDate.setMinutes(maturityDate.getMinutes() + 1);
+    } else {
+      maturityDate.setDate(maturityDate.getDate() + product.days);
+    }
+
+    const depDocRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'economy_deposits'));
+    await setDoc(depDocRef, {
+      id: depDocRef.id, userId: currentUser, name: name, productName: product.name, principal: amount,
+      rate: product.rate, maturityDate: maturityDate.toISOString(), createdAt: now.toISOString()
+    });
+
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'economy_users', currentUser), {
+      cash: user.cash - amount, deposit: user.deposit + amount
+    });
+
+    const txDocRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'economy_transactions'));
+    await setDoc(txDocRef, {
+      id: txDocRef.id, userId: currentUser, date: formatDate(now), timestamp: Date.now(),
+      type: '예금 생성', desc: `예금 생성: ${name}`, amount: `-${formatMoney(amount)}`, balance: formatMoney(user.cash - amount), isPositive: false
+    });
+
+    showAlert(`'${name}' 예금이 생성되었습니다!`);
+  };
+
+  const handleProcessDeposit = (depId, isMatured) => {
+    const depositToProcess = depositsDB[depId];
+    if (!depositToProcess) return;
+    const user = usersDB[currentUser];
+
+    const process = async (returnAmount, txType, txDesc) => {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'economy_deposits', depId));
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'economy_users', currentUser), {
+        cash: user.cash + returnAmount, deposit: user.deposit - depositToProcess.principal
+      });
+
+      const txDocRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'economy_transactions'));
+      await setDoc(txDocRef, {
+        id: txDocRef.id, userId: currentUser, date: formatDate(new Date()), timestamp: Date.now(),
+        type: txType, desc: txDesc, amount: `+${formatMoney(returnAmount)}`, balance: formatMoney(user.cash + returnAmount), isPositive: true
+      });
+      showAlert(`${txType} 처리가 완료되었습니다.\n수령 금액: ${formatMoney(returnAmount)}`);
+    };
+
+    if (isMatured) {
+      showConfirm('예금이 만기되었습니다! 이자를 포함하여 수령하시겠습니까?', () => {
+        const returnAmount = Math.floor(depositToProcess.principal * (1 + depositToProcess.rate));
+        process(returnAmount, '만기 수령', `예금 만기 수령 (이자 ${(depositToProcess.rate * 100).toFixed(1)}% 포함): ${depositToProcess.name}`);
+      });
+    } else {
+      showConfirm('정말 이 예금을 중도해지하시겠습니까?\n(중도해지 시 이자는 지급되지 않습니다)', () => {
+        process(depositToProcess.principal, '예금 중도해지', `예금 중도해지: ${depositToProcess.name}`);
+      });
+    }
+  };
+
+  const handleManageBankProduct = async (action, productData) => {
+    if (action === 'add') {
+      const newRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'economy_bank_products'));
+      await setDoc(newRef, { id: newRef.id, ...productData });
+      showAlert('새로운 예금 상품이 등록되었습니다.');
+    } else if (action === 'delete') {
+      showConfirm(`'${productData.name}' 상품을 정말 삭제하시겠습니까?`, async () => {
+        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'economy_bank_products', productData.id));
+        showAlert('상품이 삭제되었습니다.');
+      });
+    }
+  };
+
+  // --- Store Operations ---
+  const handleManageStoreProduct = async (action, data) => {
+    if (action === 'add' || action === 'edit') {
+      const refId = action === 'edit' ? data.id : doc(collection(db, 'artifacts', appId, 'public', 'data', 'economy_store_products')).id;
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'economy_store_products', refId), { id: refId, ...data });
+      showAlert(action === 'add' ? '상품이 등록되었습니다.' : '상품이 수정되었습니다.');
+    } else if (action === 'delete') {
+      showConfirm('상품을 삭제하시겠습니까?', async () => {
+        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'economy_store_products', data.id));
+        showAlert('상품이 삭제되었습니다.');
+      });
+    }
+  };
+
+  const handleAdminDistributeItem = async (targetIds, product) => {
+    if (!targetIds || targetIds.length === 0) return;
+    
+    const promises = targetIds.map(async (tid, idx) => {
+      const invRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'economy_inventory'));
+      await setDoc(invRef, {
+        id: invRef.id, userId: tid, productId: product.id, productName: product.name, icon: product.icon,
+        price: 0, purchasedAt: Date.now() + idx, isRefundable: false, refundLimitHours: 0
+      });
+      const txDocRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'economy_transactions'));
+      await setDoc(txDocRef, {
+        id: txDocRef.id, userId: tid, date: formatDate(new Date()), timestamp: Date.now() + idx,
+        type: '상품 배부', desc: `관리자 상품 지급: ${product.name}`, amount: '+0G', balance: formatMoney(usersDB[tid].cash), isPositive: true
+      });
+    });
+    await Promise.all(promises);
+    showAlert(`총 ${targetIds.length}명에게 '${product.name}' 상품을 지급했습니다.`);
+  };
+
+  const handleBuyStoreProduct = async (product) => {
+    const user = usersDB[currentUser];
+    if (product.stock <= 0) {
+      showAlert('재고가 부족합니다.');
+      return;
+    }
+    if (user.cash < product.price) {
+      showAlert(`보유 현금이 부족합니다. (필요 금액: ${formatMoney(product.price)})`);
+      return;
+    }
+
+    showConfirm(`'${product.name}' 상품을 ${formatMoney(product.price)}에 구매하시겠습니까?`, async () => {
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'economy_users', currentUser), { cash: user.cash - product.price });
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'economy_store_products', product.id), { stock: product.stock - 1 });
+
+      const invRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'economy_inventory'));
+      await setDoc(invRef, {
+        id: invRef.id, userId: currentUser, productId: product.id, productName: product.name, icon: product.icon,
+        price: product.price, purchasedAt: Date.now(), isRefundable: product.refundable, refundLimitHours: product.refundLimitHours
+      });
+
+      const txDocRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'economy_transactions'));
+      await setDoc(txDocRef, {
+        id: txDocRef.id, userId: currentUser, date: formatDate(new Date()), timestamp: Date.now(),
+        type: '상점 구매', desc: `상품 구매: ${product.name}`, amount: `-${formatMoney(product.price)}`, balance: formatMoney(user.cash - product.price), isPositive: false
+      });
+
+      showAlert(`'${product.name}' 구매 완료! 내 보관함에서 확인하세요.`);
+    });
+  };
+
+  const handleUseItem = async (item) => {
+    showConfirm('⚠️ 경고: 사용하면 다시 복구할 수 없습니다.\n정말 지금 사용하시겠습니까?', async () => {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'economy_inventory', item.id));
+      const txDocRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'economy_transactions'));
+      await setDoc(txDocRef, {
+        id: txDocRef.id, userId: currentUser, date: formatDate(new Date()), timestamp: Date.now(),
+        type: '아이템 사용', desc: `아이템 사용: ${item.productName}`, amount: '0G', balance: formatMoney(usersDB[currentUser].cash), isPositive: false
+      });
+      showAlert('아이템을 성공적으로 사용했습니다!');
+    });
+  };
+
+  const handleRefundItem = async (item) => {
+    if (!item.isRefundable) { showAlert('환불이 불가능한 상품입니다.'); return; }
+    const timePassedHours = (Date.now() - item.purchasedAt) / (1000 * 60 * 60);
+    if (timePassedHours > item.refundLimitHours) {
+      showAlert(`구매 후 ${item.refundLimitHours}시간이 지나 환불할 수 없습니다.`); return;
+    }
+
+    showConfirm(`'${item.productName}'을(를) 환불하고 ${formatMoney(item.price)}를 돌려받으시겠습니까?`, async () => {
+      const user = usersDB[currentUser];
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'economy_inventory', item.id));
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'economy_users', currentUser), { cash: user.cash + item.price });
+      
+      const prod = storeProductsDB.find(p => p.id === item.productId);
+      if (prod) {
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'economy_store_products', item.productId), { stock: prod.stock + 1 });
+      }
+
+      const txDocRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'economy_transactions'));
+      await setDoc(txDocRef, {
+        id: txDocRef.id, userId: currentUser, date: formatDate(new Date()), timestamp: Date.now(),
+        type: '상점 환불', desc: `상품 환불: ${item.productName}`, amount: `+${formatMoney(item.price)}`, balance: formatMoney(user.cash + item.price), isPositive: true
+      });
+      showAlert('환불이 완료되었습니다.');
+    });
+  };
+
+  const handleGiftItem = (item, targetUserId) => {
+    if (!targetUserId) return;
+    const targetUser = usersDB[targetUserId];
+    showConfirm(`정말 ${targetUser.name}님에게 '${item.productName}'을(를) 선물하시겠습니까?`, async () => {
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'economy_inventory', item.id), {
+        userId: targetUserId, purchasedAt: Date.now() 
+      });
+      
+      const txRef1 = doc(collection(db, 'artifacts', appId, 'public', 'data', 'economy_transactions'));
+      await setDoc(txRef1, {
+        id: txRef1.id, userId: currentUser, date: formatDate(new Date()), timestamp: Date.now(),
+        type: '아이템 선물', desc: `${targetUser.name}님에게 '${item.productName}' 선물함`, amount: '0G', balance: formatMoney(usersDB[currentUser].cash), isPositive: false
+      });
+
+      const txRef2 = doc(collection(db, 'artifacts', appId, 'public', 'data', 'economy_transactions'));
+      await setDoc(txRef2, {
+        id: txRef2.id, userId: targetUserId, date: formatDate(new Date()), timestamp: Date.now()+1,
+        type: '선물 받음', desc: `${usersDB[currentUser].name}님으로부터 '${item.productName}' 선물받음`, amount: '0G', balance: formatMoney(targetUser.cash), isPositive: true
+      });
+
+      showAlert('선물을 성공적으로 보냈습니다!');
+    });
+  };
+
+  const handleNavClick = (view, e) => {
+    e.preventDefault();
+    setCurrentView(view);
+    setIsMobileMenuOpen(false);
+  };
+
+  // 실시간으로 랭킹 및 목표 업데이트용 변수
+  const usersList = Object.values(usersDB);
+  const totalDonated = usersList.reduce((sum, u) => sum + (u.donated || 0), 0);
+  const liveDonationRankings = usersList
+    .filter(u => u.role === 'student' && u.donated > 0)
+    .sort((a, b) => b.donated - a.donated)
+    .slice(0, 5)
+    .map((u, i) => ({
+      rank: i + 1, name: u.name, amount: u.donated, 
+      color: i === 0 ? 'text-yellow-500' : i === 1 ? 'text-slate-400' : 'text-orange-500'
+    }));
+  
+  const liveDonationGoals = donationGoals.map(g => ({ ...g, current: totalDonated }));
+
+  // --- Render logic ---
+  if (!userAuth || !isDBLoaded) {
+    return (
+      <div className="min-h-screen bg-[#2E1065] flex flex-col items-center justify-center space-y-4">
+        <Loader2 className="w-12 h-12 text-fuchsia-400 animate-spin" />
+        <span className="text-purple-100 font-extrabold tracking-tight text-xl drop-shadow-md">실시간 서버에 연결 중입니다...</span>
+      </div>
+    );
+  }
+
+  if (!currentUser) {
+    return <LoginView onLogin={handleLogin} users={Object.values(usersDB)} showAlert={showAlert} />;
+  }
+
+  const myUser = usersDB[currentUser];
+  const myTotalAssets = myUser ? myUser.cash + myUser.deposit + myUser.stock : 0;
+  
+  const myDeposits = Object.values(depositsDB).filter(d => d.userId === currentUser);
+  const displayTransactions = myUser.role === 'admin' ? transactionsDB : transactionsDB.filter(tx => tx.userId === currentUser);
+  const myInventory = inventoryDB.filter(i => i.userId === currentUser);
+
+  return (
+    <div className="min-h-screen bg-[#F5F3FF] text-purple-950 font-sans transition-colors duration-300 relative">
+      
+      {/* 커스텀 모달 레이어 */}
+      {alertData && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-purple-950/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-sm w-full animate-in zoom-in-95 duration-200 border-2 border-purple-100">
+            <h3 className="text-xl font-extrabold mb-4 flex items-center gap-3 text-purple-900">
+              <div className="bg-purple-100 p-2 rounded-xl"><AlertCircle className="w-6 h-6 text-purple-600" /></div>
+              알림
+            </h3>
+            <p className="text-purple-800 mb-8 font-bold whitespace-pre-wrap leading-relaxed">{alertData.message}</p>
+            <button onClick={() => setAlertData(null)} className="w-full bg-purple-600 hover:bg-purple-700 text-white font-extrabold py-4 rounded-2xl transition-all shadow-lg shadow-purple-500/30">
+              확인
+            </button>
+          </div>
+        </div>
+      )}
+
+      {confirmData && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-purple-950/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-sm w-full animate-in zoom-in-95 duration-200 border-2 border-purple-100">
+            <h3 className="text-xl font-extrabold mb-4 flex items-center gap-3 text-purple-900">
+              <div className="bg-fuchsia-100 p-2 rounded-xl"><AlertCircle className="w-6 h-6 text-fuchsia-600" /></div>
+              확인이 필요합니다
+            </h3>
+            <p className="text-purple-800 mb-8 font-bold whitespace-pre-wrap leading-relaxed">{confirmData.message}</p>
+            <div className="flex gap-4">
+              <button 
+                onClick={() => { confirmData.onConfirm(); setConfirmData(null); }} 
+                className="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-extrabold py-4 rounded-2xl transition-all shadow-lg shadow-purple-500/30"
+              >
+                진행
+              </button>
+              <button 
+                onClick={() => setConfirmData(null)} 
+                className="flex-1 bg-purple-50 hover:bg-purple-100 text-purple-700 font-extrabold py-4 rounded-2xl transition-all border-2 border-purple-200"
+              >
+                취소
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {promptData && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-purple-950/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-sm w-full animate-in zoom-in-95 duration-200 border-2 border-purple-100">
+            <h3 className="text-xl font-extrabold mb-2 text-purple-900">{promptData.title}</h3>
+            <p className="text-purple-700 mb-6 font-bold text-sm">{promptData.message}</p>
+            <input 
+              type="text" 
+              autoFocus
+              className="w-full bg-purple-50 border-2 border-purple-200 text-purple-900 rounded-2xl px-5 py-4 outline-none focus:ring-2 focus:ring-purple-500 font-extrabold text-lg mb-8 text-center"
+              value={promptData.value} 
+              onChange={e => setPromptData({...promptData, value: e.target.value})}
+            />
+            <div className="flex gap-4">
+              <button 
+                onClick={() => { promptData.onConfirm(promptData.value); setPromptData(null); }} 
+                className="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-extrabold py-4 rounded-2xl transition-all shadow-lg shadow-purple-500/30"
+              >
+                확인/수정
+              </button>
+              <button 
+                onClick={() => setPromptData(null)} 
+                className="flex-1 bg-purple-50 hover:bg-purple-100 text-purple-700 font-extrabold py-4 rounded-2xl transition-all border-2 border-purple-200"
+              >
+                취소
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- Navigation Header --- */}
+      <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-xl border-b-2 border-purple-100 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+            <div className="flex items-center gap-8">
+              <a href="#" onClick={(e) => handleNavClick('dashboard', e)} className="flex items-center gap-3 group">
+                <div className="w-10 h-10 bg-gradient-to-br from-purple-600 to-fuchsia-600 rounded-xl flex items-center justify-center shadow-lg shadow-purple-500/30 group-hover:scale-105 transition-transform">
+                  <GraduationCap className="text-white w-6 h-6" />
+                </div>
+                <span className="text-2xl font-black tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-purple-800 to-fuchsia-700">
+                  HH 경제교실
+                </span>
+              </a>
+              <nav className={`absolute top-16 left-0 w-full bg-white border-b-2 border-purple-100 md:static md:w-auto md:border-none md:bg-transparent flex-col md:flex-row md:flex ${isMobileMenuOpen ? 'flex' : 'hidden'}`}>
+                {[
+                  { id: 'dashboard', label: '대시보드' },
+                  { id: 'bank', label: '은행' },
+                  { id: 'store', label: '상점/보관함' }
+                ].map((item) => (
+                  <a 
+                    key={item.id} 
+                    href={`#${item.id}`}
+                    onClick={(e) => handleNavClick(item.id, e)}
+                    className={`px-6 py-4 md:px-5 md:py-2.5 text-sm font-extrabold transition-all border-b md:border-none border-purple-50 md:rounded-xl ${
+                      currentView === item.id 
+                        ? 'text-white bg-purple-600 shadow-md shadow-purple-500/20' 
+                        : 'text-purple-700 hover:bg-purple-100'
+                    }`}
+                  >
+                    {item.label}
+                  </a>
+                ))}
+              </nav>
+            </div>
+
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-4">
+                <div className="text-right hidden sm:block">
+                  <p className="text-sm font-black text-purple-900">{myUser.name}</p>
+                  <p className="text-xs font-bold text-purple-500">
+                    {myUser.role === 'admin' ? '선생님' : '학생'}
+                  </p>
+                </div>
+                <button 
+                  onClick={handleLogout}
+                  className="p-2.5 text-purple-400 hover:text-white bg-purple-50 hover:bg-rose-500 rounded-xl transition-all"
+                  title="로그아웃"
+                >
+                  <LogOut className="w-5 h-5" />
+                </button>
+                <button 
+                  className="md:hidden p-2.5 text-purple-600 bg-purple-100 rounded-xl"
+                  onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                >
+                  <Menu className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* --- View Routing --- */}
+      {currentView === 'dashboard' && (
+        <DashboardView 
+          assets={myUser} totalAssets={myTotalAssets} transactions={displayTransactions} 
+          onTransfer={handleTransfer} onAdminMintBurn={handleAdminMintBurn} 
+          onAdminDeleteTx={handleAdminDeleteTx} onAdminEditTx={handleAdminEditTx} 
+          onAdminReset={handleAdminResetAssets} onAdminSelf={handleAdminSelfAsset}
+          onDonate={handleDonate} liveGoals={liveDonationGoals} liveRankings={liveDonationRankings}
+          currentUser={myUser} usersData={Object.values(usersDB)} onChangePassword={handleChangePassword}
+          showConfirm={showConfirm}
+        />
+      )}
+      
+      {currentView === 'bank' && (
+        <BankView 
+          assets={myUser} deposits={myDeposits} bankProducts={bankProductsDB}
+          onCreateDeposit={handleCreateDeposit} onProcessDeposit={handleProcessDeposit}
+          onManageBankProduct={handleManageBankProduct} showAlert={showAlert} showConfirm={showConfirm}
+        />
+      )}
+
+      {currentView === 'store' && (
+        <StoreView 
+          assets={myUser} storeProducts={storeProductsDB} inventory={myInventory} usersData={Object.values(usersDB)}
+          onBuyProduct={handleBuyStoreProduct} onManageProduct={handleManageStoreProduct} onAdminDistribute={handleAdminDistributeItem}
+          onUseItem={handleUseItem} onRefundItem={handleRefundItem} onGiftItem={handleGiftItem}
+          showAlert={showAlert} showConfirm={showConfirm}
+        />
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// --- [View: Login] ---
+// ============================================================================
+function LoginView({ onLogin, users, showAlert }) {
+  const [selectedUserId, setSelectedUserId] = useState('');
+  const [password, setPassword] = useState('');
+
+  const sortedUsers = [...users].sort((a, b) => {
+    if (a.role === 'admin') return 1;
+    if (b.role === 'admin') return -1;
+    return a.name.localeCompare(b.name);
+  });
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!selectedUserId) { showAlert('이름을 선택해주세요.'); return; }
+    if (!password) { showAlert('비밀번호를 입력해주세요.'); return; }
+    onLogin(selectedUserId, password);
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-950 to-indigo-950 flex items-center justify-center p-4">
+      <div className="max-w-md w-full bg-white rounded-[2.5rem] p-10 shadow-2xl relative overflow-hidden border-4 border-purple-200/50">
+        <div className="relative z-10">
+          <div className="w-20 h-20 bg-gradient-to-br from-purple-600 to-fuchsia-600 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-xl shadow-purple-500/40">
+            <GraduationCap className="text-white w-10 h-10" />
+          </div>
+          <h1 className="text-3xl font-black text-purple-950 text-center mb-2 tracking-tight">HH 경제교실</h1>
+          <p className="text-purple-600 font-bold text-center mb-10 text-sm">본인의 이름과 접속번호를 입력해 로그인하세요.</p>
+
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div>
+              <label className="block text-sm font-extrabold text-purple-900 mb-2">내 이름 선택</label>
+              <CustomDropdown 
+                options={sortedUsers.map(u => ({ value: u.id, label: u.name + (u.role === 'admin' ? ' (선생님)' : '') }))}
+                value={selectedUserId} onChange={setSelectedUserId} placeholder="명단에서 이름을 선택하세요"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-extrabold text-purple-900 mb-2">접속번호 (비밀번호)</label>
+              <input 
+                type="password" placeholder="초기 접속번호 4자리를 입력하세요"
+                className="w-full bg-purple-50 border-2 border-purple-100 hover:border-purple-300 text-purple-900 rounded-2xl px-5 py-4 outline-none focus:ring-2 focus:ring-purple-500 transition-all font-bold tracking-widest placeholder:tracking-normal placeholder:font-bold placeholder:text-purple-300"
+                value={password} onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
+
+            <button 
+              type="submit"
+              className="w-full bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-700 hover:to-fuchsia-700 text-white font-black text-lg py-4 rounded-2xl transition-all shadow-xl shadow-purple-500/30 mt-6"
+            >
+              교실 입장하기
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// --- [View: Dashboard] ---
+// ============================================================================
+function DashboardView({ assets, totalAssets, transactions, onTransfer, onAdminMintBurn, onAdminDeleteTx, onAdminEditTx, onAdminReset, onAdminSelf, onDonate, liveGoals, liveRankings, currentUser, usersData, onChangePassword, showConfirm }) {
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+  const [isAdminActionModalOpen, setIsAdminActionModalOpen] = useState(false);
+  const [isAdminSelfModalOpen, setIsAdminSelfModalOpen] = useState(false);
+  const [isDonateModalOpen, setIsDonateModalOpen] = useState(false);
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  
+  const [transferTarget, setTransferTarget] = useState('');
+  const [transferAmount, setTransferAmount] = useState('');
+
+  const [adminTargetIds, setAdminTargetIds] = useState([]);
+  const [adminActionType, setAdminActionType] = useState('add');
+  const [adminAmount, setAdminAmount] = useState('');
+  const [adminReason, setAdminReason] = useState('');
+
+  const [adminSelfType, setAdminSelfType] = useState('add');
+  const [adminSelfAmount, setAdminSelfAmount] = useState('');
+
+  const [donateAmount, setDonateAmount] = useState('');
+
+  const [pwCurrent, setPwCurrent] = useState('');
+  const [pwNew, setPwNew] = useState('');
+  const [pwConfirm, setPwConfirm] = useState('');
+
+  const studentCandidates = usersData.filter(u => u.role === 'student');
+
+  const executeTransfer = (e) => {
+    e.preventDefault();
+    if (!transferTarget) return;
+    const amount = parseInt(transferAmount, 10);
+    if (isNaN(amount) || amount <= 0) return;
+    onTransfer(transferTarget, amount);
+    setIsTransferModalOpen(false);
+    setTransferAmount(''); setTransferTarget('');
+  };
+
+  const executeAdminAction = (e) => {
+    e.preventDefault();
+    if (adminTargetIds.length === 0) return;
+    const amount = parseInt(adminAmount, 10);
+    if (isNaN(amount) || amount <= 0) return;
+
+    onAdminMintBurn(adminTargetIds, adminActionType, amount, adminReason || '시스템 반영');
+    setIsAdminActionModalOpen(false);
+    setAdminTargetIds([]); setAdminAmount(''); setAdminReason('');
+  };
+
+  const executeAdminSelf = (e) => {
+    e.preventDefault();
+    const amount = parseInt(adminSelfAmount, 10);
+    if (isNaN(amount) || amount <= 0) return;
+    
+    onAdminSelf(adminSelfType, amount);
+    setIsAdminSelfModalOpen(false);
+    setAdminSelfAmount('');
+  };
+
+  const executeDonate = (e) => {
+    e.preventDefault();
+    const amount = parseInt(donateAmount, 10);
+    if (isNaN(amount) || amount <= 0) return;
+
+    onDonate(amount);
+    setIsDonateModalOpen(false);
+    setDonateAmount('');
+  };
+
+  const executePasswordChange = async (e) => {
+    e.preventDefault();
+    const success = await onChangePassword(pwCurrent, pwNew, pwConfirm);
+    if (success) {
+      setIsPasswordModalOpen(false);
+      setPwCurrent(''); setPwNew(''); setPwConfirm('');
+    }
+  };
+
+  const todayStart = new Date().setHours(0,0,0,0);
+  const todaysTxs = transactions.filter(tx => tx.timestamp >= todayStart);
+  
+  let dailyMinted = 0; let dailyFined = 0; let dailyStoreSpent = 0;
+  let dailyTransfers = 0; let dailyDonations = 0;
+
+  todaysTxs.forEach(tx => {
+    const num = parseAmount(tx.amount);
+    if (tx.type === '시스템 지급' && tx.isPositive) dailyMinted += num;
+    if (tx.type === '시스템 차감' && !tx.isPositive) dailyFined += num;
+    if (tx.type === '상점 구매' && !tx.isPositive) dailyStoreSpent += num;
+    if (tx.type === '송금' && !tx.isPositive) dailyTransfers += num;
+    if (tx.type === '기부' && !tx.isPositive) dailyDonations += num;
+  });
+
+  return (
+    <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 animate-in fade-in duration-500">
+      
+      {/* 팝업 모달들 */}
+      {isTransferModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-purple-950/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 border-2 border-purple-100">
+            <div className="p-6 border-b-2 border-purple-50">
+              <h3 className="text-2xl font-black text-purple-950 flex items-center gap-3">
+                <div className="bg-purple-100 p-2 rounded-xl"><Send className="w-6 h-6 text-purple-600" /></div>
+                송금하기
+              </h3>
+            </div>
+            <form onSubmit={executeTransfer} className="p-8 space-y-6">
+              <div>
+                <label className="block text-sm font-extrabold text-purple-900 mb-2">누구에게 보낼까요?</label>
+                <CustomDropdown 
+                  options={usersData.filter(u => u.id !== currentUser.id).map(u => ({ value: u.id, label: u.name }))}
+                  value={transferTarget} onChange={setTransferTarget} placeholder="받을 대상 선택"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-extrabold text-purple-900 mb-2">보낼 금액 (현금: {formatMoney(assets.cash)})</label>
+                <input 
+                  type="number" required placeholder="금액을 입력하세요"
+                  className="w-full bg-purple-50 border-2 border-purple-100 hover:border-purple-300 text-purple-900 rounded-2xl px-5 py-4 outline-none focus:ring-2 focus:ring-purple-500 font-bold"
+                  value={transferAmount} onChange={(e) => setTransferAmount(e.target.value)}
+                />
+              </div>
+              <div className="flex gap-4 pt-4">
+                <button type="submit" className="flex-1 bg-purple-600 hover:bg-purple-700 text-white py-4 rounded-2xl font-extrabold transition-all shadow-lg shadow-purple-500/30">보내기</button>
+                <button type="button" onClick={() => setIsTransferModalOpen(false)} className="flex-1 bg-purple-50 hover:bg-purple-100 text-purple-700 py-4 rounded-2xl font-extrabold transition-all border-2 border-purple-200">취소</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 기부하기 모달 */}
+      {isDonateModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-purple-950/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 border-2 border-rose-100">
+            <div className="p-6 border-b-2 border-rose-50 bg-rose-50/50">
+              <h3 className="text-2xl font-black text-rose-950 flex items-center gap-3">
+                <div className="bg-rose-200 p-2 rounded-xl"><Heart className="w-6 h-6 text-rose-600" /></div>
+                학급 목표 기부하기
+              </h3>
+            </div>
+            <form onSubmit={executeDonate} className="p-8 space-y-6">
+              <div>
+                <label className="block text-sm font-extrabold text-rose-900 mb-2">기부할 금액 (현금: {formatMoney(assets.cash)})</label>
+                <input 
+                  type="number" required placeholder="따뜻한 마음을 입력하세요"
+                  className="w-full bg-rose-50 border-2 border-rose-100 hover:border-rose-300 text-rose-900 rounded-2xl px-5 py-4 outline-none focus:ring-2 focus:ring-rose-500 font-bold"
+                  value={donateAmount} onChange={(e) => setDonateAmount(e.target.value)}
+                />
+              </div>
+              <div className="flex gap-4 pt-4">
+                <button type="submit" className="flex-1 bg-rose-600 hover:bg-rose-700 text-white py-4 rounded-2xl font-extrabold transition-all shadow-lg shadow-rose-500/30">기부하기</button>
+                <button type="button" onClick={() => setIsDonateModalOpen(false)} className="flex-1 bg-white hover:bg-slate-50 text-rose-700 py-4 rounded-2xl font-extrabold transition-all border-2 border-rose-200">취소</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 관리자 화폐 발행/회수 모달 */}
+      {isAdminActionModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-purple-950/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 border-2 border-purple-100">
+            <div className="p-6 border-b-2 border-purple-50 bg-purple-50/50">
+              <h3 className="text-2xl font-black text-purple-950 flex items-center gap-3">
+                <div className="bg-purple-200 p-2 rounded-xl"><Coins className="w-6 h-6 text-purple-700" /></div>
+                학생 자산 관리
+              </h3>
+            </div>
+            <form onSubmit={executeAdminAction} className="p-8 space-y-6">
+              <div>
+                <label className="block text-sm font-extrabold text-purple-900 mb-2">대상 학생 (복수 선택 가능)</label>
+                <CustomMultiSelect 
+                  options={studentCandidates.map(u => ({ value: u.id, label: `${u.name} (${formatMoney(u.cash)})` }))}
+                  selectedValues={adminTargetIds} onChange={setAdminTargetIds} placeholder="학생들을 선택하세요"
+                />
+              </div>
+              <div className="flex gap-6 bg-purple-50 p-4 rounded-2xl border-2 border-purple-100">
+                <label className="flex items-center gap-3 cursor-pointer flex-1">
+                  <input type="radio" name="action" value="add" checked={adminActionType === 'add'} onChange={() => setAdminActionType('add')} className="w-5 h-5 text-purple-600 accent-purple-600" />
+                  <span className="font-extrabold text-purple-700">자산 지급 (+)</span>
+                </label>
+                <label className="flex items-center gap-3 cursor-pointer flex-1">
+                  <input type="radio" name="action" value="sub" checked={adminActionType === 'sub'} onChange={() => setAdminActionType('sub')} className="w-5 h-5 text-fuchsia-600 accent-fuchsia-600" />
+                  <span className="font-extrabold text-fuchsia-700">자산 차감 (-)</span>
+                </label>
+              </div>
+              <div className="flex gap-4">
+                <div className="flex-1">
+                  <label className="block text-sm font-extrabold text-purple-900 mb-2">금액</label>
+                  <input 
+                    type="number" required placeholder="금액"
+                    className="w-full bg-purple-50 border-2 border-purple-100 hover:border-purple-300 text-purple-900 rounded-2xl px-5 py-4 outline-none focus:ring-2 focus:ring-purple-500 font-bold"
+                    value={adminAmount} onChange={(e) => setAdminAmount(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-extrabold text-purple-900 mb-2">사유 (선택)</label>
+                <input 
+                  type="text" placeholder="예: 퀴즈 정답, 지각 등"
+                  className="w-full bg-purple-50 border-2 border-purple-100 hover:border-purple-300 text-purple-900 rounded-2xl px-5 py-4 outline-none focus:ring-2 focus:ring-purple-500 font-bold"
+                  value={adminReason} onChange={(e) => setAdminReason(e.target.value)}
+                />
+              </div>
+              <div className="flex gap-4 pt-4 border-t-2 border-purple-50">
+                <button type="submit" className="flex-1 bg-purple-900 hover:bg-purple-950 text-white py-4 rounded-2xl font-extrabold transition-colors shadow-lg">실행</button>
+                <button type="button" onClick={() => setIsAdminActionModalOpen(false)} className="flex-1 bg-purple-50 hover:bg-purple-100 text-purple-700 py-4 rounded-2xl font-extrabold transition-all border-2 border-purple-200">취소</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 관리자 본인 자산 관리 (돈 채우기/버리기) */}
+      {isAdminSelfModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-purple-950/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 border-2 border-purple-100">
+            <div className="p-6 border-b-2 border-purple-50 bg-indigo-50/50">
+              <h3 className="text-2xl font-black text-indigo-950 flex items-center gap-3">
+                <div className="bg-indigo-200 p-2 rounded-xl"><Wallet className="w-6 h-6 text-indigo-700" /></div>
+                선생님 본인 자산 관리
+              </h3>
+            </div>
+            <form onSubmit={executeAdminSelf} className="p-8 space-y-6">
+              <div className="flex gap-6 bg-indigo-50 p-4 rounded-2xl border-2 border-indigo-100">
+                <label className="flex items-center gap-3 cursor-pointer flex-1">
+                  <input type="radio" name="selfAction" value="add" checked={adminSelfType === 'add'} onChange={() => setAdminSelfType('add')} className="w-5 h-5 text-indigo-600 accent-indigo-600" />
+                  <span className="font-extrabold text-indigo-700">돈 채우기 (+)</span>
+                </label>
+                <label className="flex items-center gap-3 cursor-pointer flex-1">
+                  <input type="radio" name="selfAction" value="sub" checked={adminSelfType === 'sub'} onChange={() => setAdminSelfType('sub')} className="w-5 h-5 text-rose-600 accent-rose-600" />
+                  <span className="font-extrabold text-rose-700">돈 버리기 (-)</span>
+                </label>
+              </div>
+              <div>
+                <label className="block text-sm font-extrabold text-indigo-900 mb-2">적용할 금액</label>
+                <input 
+                  type="number" required placeholder="금액"
+                  className="w-full bg-indigo-50 border-2 border-indigo-100 hover:border-indigo-300 text-indigo-900 rounded-2xl px-5 py-4 outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
+                  value={adminSelfAmount} onChange={(e) => setAdminSelfAmount(e.target.value)}
+                />
+              </div>
+              <div className="flex gap-4 pt-4 border-t-2 border-indigo-50">
+                <button type="submit" className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-extrabold transition-colors shadow-lg">실행</button>
+                <button type="button" onClick={() => setIsAdminSelfModalOpen(false)} className="flex-1 bg-white hover:bg-indigo-50 text-indigo-700 py-4 rounded-2xl font-extrabold transition-all border-2 border-indigo-200">취소</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 비밀번호 변경 모달 */}
+      {isPasswordModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-purple-950/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 border-2 border-purple-100">
+            <div className="p-6 border-b-2 border-purple-50">
+              <h3 className="text-2xl font-black text-purple-950 flex items-center gap-3">
+                <div className="bg-purple-100 p-2 rounded-xl"><Lock className="w-6 h-6 text-purple-600" /></div>
+                비밀번호 변경
+              </h3>
+            </div>
+            <form onSubmit={executePasswordChange} className="p-8 space-y-5">
+              <div>
+                <label className="block text-sm font-extrabold text-purple-900 mb-2">현재 접속번호</label>
+                <input 
+                  type="password" required value={pwCurrent} onChange={e => setPwCurrent(e.target.value)}
+                  className="w-full bg-purple-50 border-2 border-purple-100 text-purple-900 rounded-2xl px-5 py-4 outline-none focus:ring-2 focus:ring-purple-500 font-bold tracking-widest" 
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-extrabold text-purple-900 mb-2">새 접속번호</label>
+                <input 
+                  type="password" required minLength={4} value={pwNew} onChange={e => setPwNew(e.target.value)} placeholder="최소 4자리 이상"
+                  className="w-full bg-purple-50 border-2 border-purple-100 text-purple-900 rounded-2xl px-5 py-4 outline-none focus:ring-2 focus:ring-purple-500 font-bold tracking-widest placeholder:tracking-normal placeholder:font-medium placeholder:text-purple-300" 
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-extrabold text-purple-900 mb-2">새 접속번호 확인</label>
+                <input 
+                  type="password" required minLength={4} value={pwConfirm} onChange={e => setPwConfirm(e.target.value)} placeholder="새 접속번호를 다시 입력하세요"
+                  className="w-full bg-purple-50 border-2 border-purple-100 text-purple-900 rounded-2xl px-5 py-4 outline-none focus:ring-2 focus:ring-purple-500 font-bold tracking-widest placeholder:tracking-normal placeholder:font-medium placeholder:text-purple-300" 
+                />
+              </div>
+              <div className="flex gap-4 pt-4 border-t-2 border-purple-50">
+                <button type="submit" className="flex-1 bg-purple-600 hover:bg-purple-700 text-white py-4 rounded-2xl font-extrabold transition-all shadow-lg shadow-purple-500/30">변경 저장</button>
+                <button type="button" onClick={() => setIsPasswordModalOpen(false)} className="flex-1 bg-purple-50 hover:bg-purple-100 text-purple-700 py-4 rounded-2xl font-extrabold transition-all border-2 border-purple-200">취소</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Asset Overview Card */}
+      <div className="relative overflow-hidden bg-gradient-to-br from-purple-700 via-purple-600 to-fuchsia-600 rounded-[2.5rem] p-8 sm:p-10 text-white shadow-2xl shadow-purple-500/20 border-4 border-purple-500/30">
+        <div className="absolute top-0 right-0 -mt-16 -mr-16 w-64 h-64 bg-white opacity-10 rounded-full blur-3xl"></div>
+        <div className="absolute bottom-0 left-0 -mb-16 -ml-16 w-48 h-48 bg-black opacity-20 rounded-full blur-2xl"></div>
+
+        <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-end gap-8">
+          <div>
+            <div className="flex items-center gap-4 mb-5">
+              <h1 className="text-3xl font-black opacity-95">{currentUser.name}의 자산</h1>
+              {currentUser.role === 'student' && (
+                <div className="flex items-center gap-2 bg-white/20 backdrop-blur-xl rounded-full px-4 py-1.5 shadow-inner border border-white/20">
+                  <Trophy className="w-5 h-5 text-yellow-300" />
+                  <span className="text-base font-extrabold text-white">레벨 {assets.level}</span>
+                </div>
+              )}
+            </div>
+            <div className="text-6xl sm:text-7xl font-black tracking-tighter mb-2 drop-shadow-xl">
+              {formatMoney(totalAssets)}
+            </div>
+            <p className="text-purple-200 text-lg font-bold ml-1">총 자산</p>
+          </div>
+          
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full md:w-auto mt-6 md:mt-0">
+            {[
+              { icon: Wallet, label: '현금', value: assets.cash, bg: 'bg-white/20' },
+              { icon: PiggyBank, label: '예금', value: assets.deposit, bg: 'bg-white/10' },
+              { icon: TrendingUp, label: '증권', value: assets.stock, bg: 'bg-white/5' },
+            ].map((item, idx) => (
+              <div key={idx} className="bg-white/10 backdrop-blur-xl rounded-3xl p-5 border border-white/20 shadow-xl min-w-[140px] hover:bg-white/20 transition-colors">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className={`p-2 rounded-xl ${item.bg}`}>
+                    <item.icon className="w-5 h-5 text-white" />
+                  </div>
+                  <span className="text-sm text-purple-100 font-extrabold">{item.label}</span>
+                </div>
+                <div className="text-2xl font-black tracking-tight">{formatMoney(item.value)}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Left Column */}
+        <div className="lg:col-span-2 space-y-8">
+          
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            <button 
+              onClick={() => setIsTransferModalOpen(true)}
+              className="w-full group bg-white rounded-[2rem] p-7 shadow-xl shadow-purple-100/50 border-2 border-purple-100 hover:border-purple-400 transition-all text-left flex items-center justify-between"
+            >
+              <div className="flex items-center gap-5">
+                <div className="w-16 h-16 bg-purple-100 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform group-hover:bg-purple-600 group-hover:text-white text-purple-600">
+                  <Send className="w-8 h-8" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-purple-950">내 자산 송금하기</h3>
+                  <p className="text-sm text-purple-600 font-bold mt-1">친구에게 현금 이체</p>
+                </div>
+              </div>
+            </button>
+
+            {currentUser.role === 'admin' && (
+              <div className="flex flex-col gap-3">
+                <button 
+                  onClick={() => setIsAdminActionModalOpen(true)}
+                  className="w-full flex-1 group bg-purple-950 rounded-3xl p-5 shadow-xl shadow-purple-900/50 border-2 border-purple-800 hover:border-fuchsia-400 transition-all text-left flex items-center justify-between"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-purple-900 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform border border-purple-700">
+                      <Coins className="w-6 h-6 text-fuchsia-400" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-black text-white">학생 자산 관리</h3>
+                      <p className="text-xs text-purple-300 font-bold mt-1">지급/차감</p>
+                    </div>
+                  </div>
+                </button>
+                <button 
+                  onClick={() => setIsAdminSelfModalOpen(true)}
+                  className="w-full flex-1 group bg-indigo-50 rounded-3xl p-5 border-2 border-indigo-200 hover:border-indigo-400 transition-all text-left flex items-center justify-between"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform border border-indigo-200">
+                      <Wallet className="w-6 h-6 text-indigo-600" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-black text-indigo-900">선생님 자산 관리</h3>
+                      <p className="text-xs text-indigo-600 font-bold mt-1">내 돈 채우기/버리기</p>
+                    </div>
+                  </div>
+                </button>
+              </div>
+            )}
+
+            {currentUser.role === 'student' && (
+              <button 
+                onClick={() => setIsDonateModalOpen(true)}
+                className="w-full group bg-rose-50 rounded-[2rem] p-7 shadow-xl shadow-rose-100/50 border-2 border-rose-200 hover:border-rose-400 transition-all text-left flex items-center justify-between"
+              >
+                <div className="flex items-center gap-5">
+                  <div className="w-16 h-16 bg-rose-200 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform group-hover:bg-rose-500 group-hover:text-white text-rose-600">
+                    <Heart className="w-8 h-8" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black text-rose-950">기부하기</h3>
+                    <p className="text-sm text-rose-600 font-bold mt-1">학급 목표 달성을 위해!</p>
+                  </div>
+                </div>
+              </button>
+            )}
+          </div>
+
+          {/* Donation Goals / Rankings Display */}
+          <section className="bg-white rounded-[2.5rem] shadow-xl shadow-rose-100/50 border-2 border-rose-100 overflow-hidden">
+            <div className="p-8 border-b-2 border-rose-50 flex justify-between items-center bg-rose-50/30">
+              <h2 className="text-2xl font-black text-rose-950 flex items-center gap-3">
+                <div className="bg-rose-100 p-2 rounded-xl"><Target className="w-6 h-6 text-rose-600" /></div>
+                학급 기부 현황
+              </h2>
+            </div>
+            <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div>
+                <h3 className="font-extrabold text-rose-900 mb-4 flex items-center gap-2"><Medal className="w-5 h-5 text-amber-500" /> 기부 랭킹 Top 5</h3>
+                <div className="space-y-3">
+                  {liveRankings.map((user, idx) => (
+                    <div key={idx} className="flex justify-between items-center p-3.5 bg-rose-50/50 rounded-2xl border border-rose-100">
+                      <div className="flex items-center gap-3">
+                        <span className={`font-black text-lg w-6 text-center ${user.color}`}>{user.rank}</span>
+                        <span className="font-bold text-rose-900">{user.name}</span>
+                      </div>
+                      <span className="font-black text-rose-600">{formatMoney(user.amount)}</span>
+                    </div>
+                  ))}
+                  {liveRankings.length === 0 && <p className="text-sm text-rose-400 font-bold p-4 text-center">아직 기부 내역이 없습니다.</p>}
+                </div>
+              </div>
+              <div>
+                <h3 className="font-extrabold text-rose-900 mb-4 flex items-center gap-2"><Target className="w-5 h-5 text-rose-500" /> 공동 목표</h3>
+                <div className="space-y-4">
+                  {liveGoals.map((goal, idx) => {
+                    const percent = Math.min(100, (goal.current / goal.target) * 100);
+                    return (
+                      <div key={idx} className="bg-white p-4 rounded-2xl border-2 border-rose-100 shadow-sm">
+                        <div className="flex justify-between items-center mb-2">
+                          <h4 className="font-black text-rose-900">{goal.title}</h4>
+                          <span className="bg-rose-100 text-rose-700 text-xs font-black px-2 py-1 rounded-lg">{percent.toFixed(1)}%</span>
+                        </div>
+                        <div className="w-full bg-rose-100 rounded-full h-2 mb-2">
+                          <div className="bg-rose-500 h-2 rounded-full transition-all" style={{ width: `${percent}%` }}></div>
+                        </div>
+                        <div className="flex justify-between text-xs font-bold text-rose-500">
+                          <span>{formatMoney(goal.current)}</span>
+                          <span>{formatMoney(goal.target)}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* Transaction History */}
+          <section className="bg-white rounded-[2.5rem] shadow-xl shadow-purple-100/50 border-2 border-purple-100 overflow-hidden">
+            <div className="p-8 border-b-2 border-purple-50 flex justify-between items-center bg-purple-50/30">
+              <h2 className="text-2xl font-black text-purple-950 flex items-center gap-3">
+                <div className="bg-purple-100 p-2 rounded-xl"><History className="w-6 h-6 text-purple-600" /></div>
+                {currentUser.role === 'admin' ? '반 전체 거래 내역' : '내 최근 거래 내역'}
+              </h2>
+            </div>
+            <div className="overflow-x-auto p-4">
+              <table className="w-full text-sm text-left">
+                <thead className="text-purple-500 font-extrabold border-b-2 border-purple-100">
+                  <tr>
+                    <th className="px-6 py-5">일시</th>
+                    {currentUser.role === 'admin' && <th className="px-6 py-5">사용자</th>}
+                    <th className="px-6 py-5">거래유형</th>
+                    <th className="px-6 py-5">내용</th>
+                    <th className="px-6 py-5 text-right">증감</th>
+                    <th className="px-6 py-5 text-right">잔액</th>
+                    {currentUser.role === 'admin' && <th className="px-6 py-5 text-center">관리</th>}
+                  </tr>
+                </thead>
+                <tbody className="divide-y-2 divide-purple-50">
+                  {transactions.slice(0, 15).map((tx) => (
+                    <tr key={tx.id} className="hover:bg-purple-50/50 transition-colors">
+                      <td className="px-6 py-5 text-purple-600 font-bold whitespace-nowrap">{tx.date}</td>
+                      {currentUser.role === 'admin' && <td className="px-6 py-5 font-black text-purple-950">{usersData.find(u => u.id === tx.userId)?.name || tx.userId}</td>}
+                      <td className="px-6 py-5 whitespace-nowrap">
+                        <Badge type={tx.type.includes('사용') || tx.type.includes('선물') ? 'neutral' : tx.isPositive ? 'positive' : 'negative'}>{tx.type}</Badge>
+                      </td>
+                      <td className="px-6 py-5 text-purple-900 font-extrabold">{tx.desc}</td>
+                      <td className="px-6 py-5 text-right font-black whitespace-nowrap text-lg">
+                        <span className={tx.type.includes('사용') || tx.type.includes('선물') ? 'text-purple-400' : tx.isPositive ? 'text-purple-600' : 'text-fuchsia-600'}>
+                          {tx.amount}
+                        </span>
+                      </td>
+                      <td className="px-6 py-5 text-right font-black text-purple-900 text-lg">
+                        {tx.balance || '-'}
+                      </td>
+                      {currentUser.role === 'admin' && (
+                        <td className="px-6 py-5 text-center">
+                          <div className="flex gap-2 justify-center">
+                            <button onClick={() => onAdminEditTx(tx)} className="p-2 text-purple-400 hover:bg-purple-100 hover:text-purple-700 rounded-lg transition-colors" title="수정">
+                              <Edit3 className="w-5 h-5" />
+                            </button>
+                            <button onClick={() => onAdminDeleteTx(tx)} className="p-2 text-rose-400 hover:bg-rose-100 hover:text-rose-600 rounded-lg transition-colors" title="취소/삭제 (복구)">
+                              <Undo2 className="w-5 h-5" />
+                            </button>
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                  {transactions.length === 0 && (
+                    <tr>
+                      <td colSpan={currentUser.role === 'admin' ? 7 : 5} className="text-center py-10 text-purple-400 font-bold">거래 내역이 없습니다.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
+        {/* Right Column */}
+        <div className="space-y-8">
+          <section className="bg-white rounded-[2rem] shadow-xl shadow-purple-100/50 border-2 border-purple-100 p-8">
+            <h2 className="text-2xl font-black text-purple-950 mb-2 flex items-center gap-3">
+              <div className="bg-purple-100 p-2 rounded-xl"><ChartColumn className="w-6 h-6 text-purple-600" /></div>
+              오늘의 통계
+            </h2>
+            <p className="text-sm font-bold text-purple-500 mb-8">학급 전체 경제 활동 요약</p>
+            
+            <div className="space-y-4">
+              {[
+                { title: '화폐 발행액', val: formatMoney(dailyMinted), icon: ArrowUpRight, color: 'text-purple-600', bg: 'bg-purple-50' },
+                { title: '징수 및 벌금', val: formatMoney(dailyFined), icon: Minus, color: 'text-fuchsia-600', bg: 'bg-fuchsia-50' },
+                { title: '상품 구매액', val: formatMoney(dailyStoreSpent), icon: Store, color: 'text-violet-600', bg: 'bg-violet-50' },
+                { title: '학생 송금액', val: formatMoney(dailyTransfers), icon: Send, color: 'text-indigo-600', bg: 'bg-indigo-50' },
+                { title: '기부 총액', val: formatMoney(dailyDonations), icon: Heart, color: 'text-rose-600', bg: 'bg-rose-50' },
+              ].map((stat, idx) => {
+                const IconComp = stat.icon;
+                return (
+                  <div key={idx} className={`p-5 rounded-2xl flex justify-between items-center border-2 border-transparent hover:border-purple-200 transition-all ${stat.bg}`}>
+                    <span className="font-extrabold text-purple-900">{stat.title}</span>
+                    <div className="flex items-center gap-2">
+                      <span className={`font-black text-xl ${stat.color}`}>{stat.val}</span>
+                      <IconComp className={`w-5 h-5 ${stat.color}`} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="bg-white rounded-[2rem] shadow-xl shadow-purple-100/50 border-2 border-purple-100 p-8">
+            <h2 className="text-xl font-black text-purple-950 mb-6 flex items-center gap-3">
+              <div className="bg-purple-100 p-2 rounded-xl"><Settings className="w-5 h-5 text-purple-600" /></div>
+              설정
+            </h2>
+            <div className="space-y-4">
+              <button 
+                onClick={() => setIsPasswordModalOpen(true)}
+                className="w-full flex items-center gap-4 p-4 hover:bg-purple-50 rounded-2xl transition-all border-2 border-purple-100 hover:border-purple-300 text-left"
+              >
+                <div className="p-3 bg-purple-100 rounded-xl">
+                  <Lock className="w-6 h-6 text-purple-600" />
+                </div>
+                <div>
+                  <div className="font-black text-purple-950">비밀번호 변경</div>
+                  <div className="text-xs font-bold text-purple-500 mt-1">안전을 위해 새 번호를 설정하세요</div>
+                </div>
+              </button>
+
+              {currentUser.role === 'admin' && (
+                <button 
+                  onClick={onAdminReset}
+                  className="w-full flex items-center gap-4 p-4 hover:bg-rose-50 rounded-2xl transition-all border-2 border-rose-100 hover:border-rose-300 text-left"
+                >
+                  <div className="p-3 bg-rose-100 rounded-xl">
+                    <AlertCircle className="w-6 h-6 text-rose-600" />
+                  </div>
+                  <div>
+                    <div className="font-black text-rose-900">전체 자산 0으로 초기화</div>
+                    <div className="text-xs font-bold text-rose-500 mt-1">모든 학생 자산 리셋 (위험)</div>
+                  </div>
+                </button>
+              )}
+            </div>
+          </section>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+// ============================================================================
+// --- [View: Bank] ---
+// ============================================================================
+function BankView({ assets, deposits, bankProducts, onCreateDeposit, onProcessDeposit, onManageBankProduct, showAlert, showConfirm }) {
+  const [showForm, setShowForm] = useState(false);
+  const [showProductManager, setShowProductManager] = useState(false);
+  const [now, setNow] = useState(new Date());
+  
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  
+  const [selectedProduct, setSelectedProduct] = useState('');
+  const [depositName, setDepositName] = useState('');
+  const [depositAmount, setDepositAmount] = useState('');
+
+  const [newProdName, setNewProdName] = useState('');
+  const [newProdDays, setNewProdDays] = useState('');
+  const [newProdRate, setNewProdRate] = useState('');
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!selectedProduct || !depositName || !depositAmount) { showAlert('모든 필드를 입력해주세요.'); return; }
+    const amount = parseInt(depositAmount, 10);
+    if (isNaN(amount) || amount <= 0) { showAlert('올바른 금액을 입력해주세요.'); return; }
+    const product = bankProducts.find(p => p.id === selectedProduct);
+    onCreateDeposit({ product, name: depositName, amount });
+    setSelectedProduct(''); setDepositName(''); setDepositAmount(''); setShowForm(false);
+  };
+
+  const handleAddProduct = (e) => {
+    e.preventDefault();
+    if (!newProdName || !newProdDays || !newProdRate) return;
+    const productData = {
+      name: newProdName, days: parseInt(newProdDays, 10), rate: parseFloat(newProdRate) / 100, rateText: `${parseFloat(newProdRate)}%`
+    };
+    onManageBankProduct('add', productData);
+    setNewProdName(''); setNewProdDays(''); setNewProdRate('');
+  };
+
+  return (
+    <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 animate-in fade-in duration-500">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 bg-white p-8 rounded-[2.5rem] shadow-xl shadow-purple-100/50 border-2 border-purple-100">
+        <div>
+          <h1 className="text-3xl font-black text-purple-950 flex items-center gap-4">
+            <div className="bg-purple-100 p-3 rounded-2xl"><Building className="w-8 h-8 text-purple-600" /></div>
+            HH 은행
+          </h1>
+          <p className="text-purple-600 font-bold mt-4">다양한 예금 상품으로 이자를 받아 자산을 불려보세요.</p>
+          <div className="mt-6 inline-flex items-center gap-3 bg-purple-50 px-5 py-3 rounded-2xl border-2 border-purple-100">
+            <span className="font-extrabold text-sm text-purple-700">보유 현금:</span>
+            <span className="font-black text-xl tracking-tight text-purple-900">{formatMoney(assets.cash)}</span>
+          </div>
+        </div>
+        
+        <div className="flex gap-3">
+          {assets.role === 'admin' && (
+            <button onClick={() => setShowProductManager(!showProductManager)} className="flex items-center gap-2 bg-purple-950 hover:bg-purple-900 text-white px-6 py-4 rounded-2xl font-extrabold transition-all shadow-lg border border-purple-800">
+              <Settings className="w-5 h-5" /> 상품 관리
+            </button>
+          )}
+          {assets.role !== 'admin' && !showForm && (
+            <button onClick={() => setShowForm(true)} className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-8 py-4 rounded-2xl font-extrabold transition-all shadow-xl shadow-purple-500/30">
+              <Plus className="w-6 h-6" /> 새 예금 만들기
+            </button>
+          )}
+        </div>
+      </div>
+
+      {showProductManager && assets.role === 'admin' && (
+        <section className="bg-white rounded-[2.5rem] shadow-xl shadow-purple-100/50 border-2 border-purple-100 p-8 animate-in zoom-in-95">
+          <h2 className="text-2xl font-black text-purple-950 mb-6 flex items-center gap-3"><Settings className="w-6 h-6 text-purple-500" /> 은행 상품 관리</h2>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div>
+              <h3 className="font-extrabold text-purple-800 mb-4">현재 운영 중인 상품</h3>
+              <ul className="space-y-4">
+                {bankProducts.map(prod => (
+                  <li key={prod.id} className="flex justify-between items-center bg-purple-50 p-5 rounded-2xl border-2 border-purple-100">
+                    <div>
+                      <div className="font-black text-purple-900">{prod.name}</div>
+                      <div className="font-bold text-purple-600 mt-1">기간: {prod.days}일 | 이자율: {prod.rateText}</div>
+                    </div>
+                    <button onClick={() => onManageBankProduct('delete', prod)} className="p-3 text-fuchsia-500 hover:bg-fuchsia-100 rounded-xl transition-colors">
+                      <Trash2 className="w-6 h-6" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="bg-purple-50 p-8 rounded-[2rem] border-2 border-purple-100">
+              <h3 className="font-extrabold text-purple-800 mb-6">새 상품 추가</h3>
+              <form onSubmit={handleAddProduct} className="space-y-5">
+                <input type="text" required placeholder="상품명 (예: 깜짝 주말 특판)" className="w-full bg-white border-2 border-purple-200 text-purple-900 rounded-xl px-5 py-4 outline-none focus:border-purple-500 font-bold" value={newProdName} onChange={e => setNewProdName(e.target.value)} />
+                <div className="flex gap-4">
+                  <input type="number" required placeholder="기간 (일)" className="w-full bg-white border-2 border-purple-200 text-purple-900 rounded-xl px-5 py-4 outline-none focus:border-purple-500 font-bold" value={newProdDays} onChange={e => setNewProdDays(e.target.value)} />
+                  <input type="number" step="0.1" required placeholder="이자율 (%)" className="w-full bg-white border-2 border-purple-200 text-purple-900 rounded-xl px-5 py-4 outline-none focus:border-purple-500 font-bold" value={newProdRate} onChange={e => setNewProdRate(e.target.value)} />
+                </div>
+                <button type="submit" className="w-full bg-purple-900 text-white font-extrabold py-4 rounded-xl shadow-lg mt-2">상품 등록하기</button>
+              </form>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {showForm && (
+        <section className="bg-white rounded-[2.5rem] shadow-xl shadow-purple-100/50 border-2 border-purple-100 p-10 animate-in zoom-in-95 max-w-3xl mx-auto">
+          <h2 className="text-3xl font-black text-purple-950 mb-2">새 예금 만들기</h2>
+          <p className="text-purple-600 font-bold mb-8">원하는 예금 상품을 선택하고 가입할 금액을 입력하세요.</p>
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div>
+              <label className="block text-sm font-extrabold text-purple-900 mb-3">예금 상품</label>
+              <CustomDropdown 
+                options={bankProducts.map(p => ({ value: p.id, label: `${p.name} (이자 ${p.rateText})` }))}
+                value={selectedProduct} onChange={setSelectedProduct} placeholder="가입할 예금 상품을 선택하세요"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-extrabold text-purple-900 mb-3">나만의 예금명</label>
+              <input type="text" placeholder="예금의 목적이나 이름을 입력하세요" className="w-full bg-purple-50 border-2 border-purple-100 text-purple-900 rounded-2xl px-5 py-4 outline-none focus:border-purple-500 font-bold" value={depositName} onChange={(e) => setDepositName(e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-sm font-extrabold text-purple-900 mb-3">가입 금액 (보유: {formatMoney(assets.cash)})</label>
+              <input type="number" placeholder="예금할 금액을 입력하세요" className="w-full bg-purple-50 border-2 border-purple-100 text-purple-900 rounded-2xl px-5 py-4 outline-none focus:border-purple-500 font-bold" value={depositAmount} onChange={(e) => setDepositAmount(e.target.value)} />
+            </div>
+            <div className="flex gap-4 pt-6 border-t-2 border-purple-50">
+              <button type="submit" className="flex-1 bg-purple-600 hover:bg-purple-700 text-white py-4 rounded-2xl font-extrabold transition-all shadow-xl shadow-purple-500/30 text-lg">가입 완료하기</button>
+              <button type="button" onClick={() => setShowForm(false)} className="flex-1 bg-purple-50 hover:bg-purple-100 text-purple-700 py-4 rounded-2xl font-extrabold transition-all border-2 border-purple-200">취소</button>
+            </div>
+          </form>
+        </section>
+      )}
+
+      <div>
+        <h3 className="text-2xl font-black text-purple-950 mb-6 flex items-center gap-3">
+          {assets.role === 'admin' ? '학급 전체 보유 예금' : '내 가입 예금'}
+          <span className="bg-purple-100 text-purple-700 text-base px-3 py-1 rounded-xl">{deposits.length}</span>
+        </h3>
+        
+        {deposits.length === 0 ? (
+          <div className="bg-white rounded-[2.5rem] p-20 text-center border-2 border-purple-100 shadow-xl shadow-purple-50/50">
+            <PiggyBank className="w-16 h-16 text-purple-200 mx-auto mb-6" />
+            <p className="text-xl font-extrabold text-purple-400">보유 중인 예금이 없습니다.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {deposits.map((deposit) => {
+              const expectedReturn = Math.floor(deposit.principal * (1 + deposit.rate));
+              const isMatured = now >= new Date(deposit.maturityDate);
+              
+              return (
+                <div key={deposit.id} className={`bg-white rounded-[2rem] border-4 ${isMatured ? 'border-purple-400 shadow-2xl shadow-purple-400/30' : 'border-purple-100 shadow-xl shadow-purple-50/50'} overflow-hidden flex flex-col transition-all hover:-translate-y-1`}>
+                  <div className="p-8 flex-1">
+                    <div className="flex justify-between items-start mb-6">
+                      <h4 className="text-xl font-black text-purple-950 pr-4">{deposit.name}</h4>
+                      <div className={`p-3 rounded-2xl ${isMatured ? 'bg-purple-100 text-purple-600' : 'bg-purple-50 text-purple-400'}`}>
+                        <Building className="w-6 h-6" />
+                      </div>
+                    </div>
+                    
+                    <div className="inline-flex items-center gap-2 bg-purple-50 px-4 py-2 rounded-xl mb-8">
+                      <span className="text-sm font-extrabold text-purple-700">{deposit.productName}</span>
+                      {isMatured && <span className="flex items-center gap-1 text-xs font-black text-purple-600 bg-purple-200 px-2 py-1 rounded-lg animate-pulse">만기 달성!</span>}
+                    </div>
+                    
+                    <div className="space-y-4 text-sm font-bold text-purple-800">
+                      <div className="flex justify-between items-center"><span className="text-purple-400">투자 원금</span><span className="text-lg text-purple-950">{formatMoney(deposit.principal)}</span></div>
+                      <div className="flex justify-between items-center"><span className="text-purple-400">이자율</span><span className="text-purple-600">{deposit.rate * 100}%</span></div>
+                      <div className="flex justify-between items-center"><span className="text-purple-400">만기 일시</span><span>{formatDate(new Date(deposit.maturityDate))}</span></div>
+                      <div className="flex justify-between items-center pt-5 border-t-2 border-purple-50 mt-5"><span className="text-purple-950 font-black text-base">최종 수령액</span><span className="font-black text-purple-600 text-2xl">{formatMoney(expectedReturn)}</span></div>
+                    </div>
+                  </div>
+                  
+                  {assets.role !== 'admin' && (
+                    <div className="p-5 bg-purple-50/50 border-t-2 border-purple-50">
+                      {isMatured ? (
+                        <button onClick={() => onProcessDeposit(deposit.id, true)} className="w-full py-4 bg-purple-600 hover:bg-purple-700 text-white text-lg font-black rounded-2xl transition-all shadow-lg shadow-purple-500/30">만기 수령 (원금 + 이자)</button>
+                      ) : (
+                        <button onClick={() => onProcessDeposit(deposit.id, false)} className="w-full py-4 bg-white border-2 border-fuchsia-200 text-fuchsia-600 hover:bg-fuchsia-500 hover:text-white text-base font-extrabold rounded-2xl transition-all">중도해지 (이자 포기)</button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </main>
+  );
+}
+
+// ============================================================================
+// --- [View: Store] ---
+// ============================================================================
+function StoreView({ assets, storeProducts, inventory, usersData, onBuyProduct, onManageProduct, onAdminDistribute, onUseItem, onRefundItem, onGiftItem, showAlert, showConfirm }) {
+  const [activeTab, setActiveTab] = useState('store'); // 'store' | 'inventory' | 'manage'
+  const [showProductForm, setShowProductForm] = useState(false);
+  const [editProduct, setEditProduct] = useState(null);
+  
+  // 선물하기 모달 전용 상태
+  const [isGiftModalOpen, setIsGiftModalOpen] = useState(false);
+  const [giftItemInfo, setGiftItemInfo] = useState(null);
+  const [giftTargetUser, setGiftTargetUser] = useState('');
+
+  // 상품 폼 상태
+  const [prodName, setProdName] = useState('');
+  const [prodDesc, setProdDesc] = useState('');
+  const [prodPrice, setProdPrice] = useState('');
+  const [prodStock, setProdStock] = useState('');
+  const [prodIcon, setProdIcon] = useState('🎁');
+  const [prodRefundable, setProdRefundable] = useState(true);
+  const [prodRefundLimit, setProdRefundLimit] = useState('24');
+
+  // 관리자 배부 폼 상태
+  const [distMode, setDistMode] = useState(null);
+  const [distTargets, setDistTargetIds] = useState([]);
+
+  const openForm = (prod = null) => {
+    if (prod) {
+      setEditProduct(prod); setProdName(prod.name); setProdDesc(prod.desc); setProdPrice(prod.price);
+      setProdStock(prod.stock); setProdIcon(prod.icon); setProdRefundable(prod.refundable ?? true);
+      setProdRefundLimit(prod.refundLimitHours ?? 24);
+    } else {
+      setEditProduct(null); setProdName(''); setProdDesc(''); setProdPrice(''); setProdStock('99');
+      setProdIcon('🎁'); setProdRefundable(true); setProdRefundLimit('24');
+    }
+    setShowProductForm(true);
+  };
+
+  const handleProductSubmit = (e) => {
+    e.preventDefault();
+    if (!prodName || !prodPrice || !prodStock) return;
+    const data = {
+      ...(editProduct ? { id: editProduct.id } : {}),
+      name: prodName, desc: prodDesc, price: parseInt(prodPrice, 10), stock: parseInt(prodStock, 10),
+      icon: prodIcon, refundable: prodRefundable, refundLimitHours: parseInt(prodRefundLimit, 10)
+    };
+    onManageProduct(editProduct ? 'edit' : 'add', data);
+    setShowProductForm(false);
+  };
+
+  const handleDistribute = (e) => {
+    e.preventDefault();
+    if (distTargets.length === 0) return;
+    const prod = storeProducts.find(p => p.id === distMode);
+    if (!prod) return;
+    onAdminDistribute(distTargets, prod);
+    setDistMode(null);
+    setDistTargetIds([]);
+  };
+
+  const executeGift = (e) => {
+    e.preventDefault();
+    if(!giftTargetUser) { showAlert('받을 친구를 선택해주세요.'); return; }
+    onGiftItem(giftItemInfo, giftTargetUser);
+    setIsGiftModalOpen(false);
+    setGiftItemInfo(null);
+    setGiftTargetUser('');
+  };
+
+  return (
+    <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 animate-in fade-in duration-500">
+      
+      {/* 커스텀 선물하기 모달 */}
+      {isGiftModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-purple-950/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 border-2 border-fuchsia-100">
+            <div className="p-6 border-b-2 border-fuchsia-50 bg-fuchsia-50/50">
+              <h3 className="text-2xl font-black text-fuchsia-950 flex items-center gap-3">
+                <div className="bg-fuchsia-200 p-2 rounded-xl"><Gift className="w-6 h-6 text-fuchsia-700" /></div>
+                친구에게 선물하기
+              </h3>
+            </div>
+            <form onSubmit={executeGift} className="p-8 space-y-6">
+              <div className="bg-fuchsia-50 p-4 rounded-2xl flex items-center gap-4 mb-4">
+                <div className="text-4xl">{giftItemInfo?.icon}</div>
+                <div className="font-extrabold text-fuchsia-900 text-lg">{giftItemInfo?.productName}</div>
+              </div>
+              <div>
+                <label className="block text-sm font-extrabold text-fuchsia-900 mb-2">누구에게 선물할까요?</label>
+                <CustomDropdown 
+                  options={usersData.filter(u => u.role === 'student' && u.id !== assets.id).map(u => ({ value: u.id, label: u.name }))}
+                  value={giftTargetUser} onChange={setGiftTargetUser} placeholder="받을 친구 선택"
+                />
+              </div>
+              <div className="flex gap-4 pt-4">
+                <button type="submit" className="flex-1 bg-fuchsia-600 hover:bg-fuchsia-700 text-white py-4 rounded-2xl font-extrabold transition-all shadow-lg shadow-fuchsia-500/30">선물 보내기</button>
+                <button type="button" onClick={() => setIsGiftModalOpen(false)} className="flex-1 bg-white hover:bg-fuchsia-50 text-fuchsia-700 py-4 rounded-2xl font-extrabold transition-all border-2 border-fuchsia-200">취소</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 bg-white p-8 rounded-[2.5rem] shadow-xl shadow-purple-100/50 border-2 border-purple-100">
+        <div>
+          <h1 className="text-3xl font-black text-purple-950 flex items-center gap-4">
+            <div className="bg-fuchsia-100 p-3 rounded-2xl"><Store className="w-8 h-8 text-fuchsia-600" /></div>
+            상점 & 보관함
+          </h1>
+          <p className="text-purple-600 font-bold mt-4">특별한 혜택이나 아이템을 구매하고 사용하세요.</p>
+          <div className="mt-6 inline-flex items-center gap-3 bg-purple-50 px-5 py-3 rounded-2xl border-2 border-purple-100">
+            <span className="font-extrabold text-sm text-purple-700">보유 현금:</span>
+            <span className="font-black text-xl tracking-tight text-purple-900">{formatMoney(assets.cash)}</span>
+          </div>
+        </div>
+        
+        <div className="flex bg-purple-50 p-2 rounded-2xl border-2 border-purple-100">
+          <button onClick={() => setActiveTab('store')} className={`px-6 py-3 font-extrabold rounded-xl transition-all ${activeTab === 'store' ? 'bg-white text-purple-900 shadow-md' : 'text-purple-500 hover:text-purple-700'}`}>상점</button>
+          {assets.role !== 'admin' && <button onClick={() => setActiveTab('inventory')} className={`px-6 py-3 font-extrabold rounded-xl transition-all flex items-center gap-2 ${activeTab === 'inventory' ? 'bg-white text-purple-900 shadow-md' : 'text-purple-500 hover:text-purple-700'}`}>보관함 <span className="bg-purple-200 text-purple-800 px-2 py-0.5 rounded-lg text-xs">{inventory.length}</span></button>}
+          {assets.role === 'admin' && <button onClick={() => setActiveTab('manage')} className={`px-6 py-3 font-extrabold rounded-xl transition-all ${activeTab === 'manage' ? 'bg-white text-purple-900 shadow-md' : 'text-purple-500 hover:text-purple-700'}`}>상품 관리</button>}
+        </div>
+      </div>
+
+      {/* --- STORE TAB --- */}
+      {activeTab === 'store' && (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 pt-4">
+          {storeProducts.map((product) => (
+            <div key={product.id} className="bg-white rounded-[2rem] border-4 border-purple-50 shadow-xl shadow-purple-100/50 overflow-hidden flex flex-col hover:-translate-y-2 hover:border-purple-300 transition-all group">
+              <div className="p-8 flex flex-col items-center justify-center flex-1 bg-gradient-to-b from-purple-50/50 to-white">
+                <div className="text-6xl mb-6 group-hover:scale-125 transition-transform duration-300 drop-shadow-md">{product.icon}</div>
+                <h3 className="font-black text-purple-950 text-center text-lg leading-snug mb-2">{product.name}</h3>
+                <p className="text-xs font-bold text-purple-400 text-center">{product.desc}</p>
+              </div>
+              <div className="p-5 border-t-2 border-purple-50 flex flex-col gap-4 bg-white">
+                <div className="flex justify-between items-center px-2">
+                  <span className="font-extrabold text-sm text-purple-500">잔여: {product.stock}개</span>
+                  <span className="font-black text-xl text-purple-900">{formatMoney(product.price)}</span>
+                </div>
+                {assets.role !== 'admin' && (
+                  <button onClick={() => onBuyProduct(product)} disabled={product.stock <= 0} className={`w-full font-extrabold py-3.5 rounded-xl transition-all shadow-md ${product.stock > 0 ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-purple-500/30' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}>
+                    {product.stock > 0 ? '구매하기' : '품절'}
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* --- INVENTORY TAB --- */}
+      {activeTab === 'inventory' && assets.role !== 'admin' && (
+        <div>
+          {inventory.length === 0 ? (
+            <div className="bg-white rounded-[2.5rem] p-20 text-center border-2 border-purple-100 shadow-xl shadow-purple-50/50">
+              <Gift className="w-16 h-16 text-purple-200 mx-auto mb-6" />
+              <p className="text-xl font-extrabold text-purple-400">보관함이 비어있습니다.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {inventory.map(item => {
+                const hoursPassed = (Date.now() - item.purchasedAt) / 3600000;
+                const canRefund = item.isRefundable && hoursPassed <= item.refundLimitHours;
+                
+                return (
+                  <div key={item.id} className="bg-white rounded-[2rem] border-4 border-fuchsia-100 shadow-xl shadow-fuchsia-100/50 p-6 flex flex-col">
+                    <div className="flex items-center gap-5 mb-6">
+                      <div className="text-5xl bg-fuchsia-50 p-4 rounded-2xl">{item.icon}</div>
+                      <div>
+                        <h4 className="font-black text-xl text-fuchsia-950 mb-1">{item.productName}</h4>
+                        <p className="text-sm font-bold text-fuchsia-500">구매: {formatDate(new Date(item.purchasedAt))}</p>
+                      </div>
+                    </div>
+                    <div className="mt-auto space-y-3">
+                      <button onClick={() => onUseItem(item)} className="w-full bg-fuchsia-600 hover:bg-fuchsia-700 text-white font-extrabold py-4 rounded-2xl transition-all shadow-lg shadow-fuchsia-500/30">
+                        사용하기
+                      </button>
+                      <div className="flex gap-3">
+                        {canRefund && (
+                          <button onClick={() => onRefundItem(item)} className="flex-1 bg-white border-2 border-fuchsia-200 hover:bg-fuchsia-50 text-fuchsia-700 font-extrabold py-3 rounded-xl transition-all">
+                            환불하기
+                          </button>
+                        )}
+                        <button 
+                          onClick={() => { setIsGiftModalOpen(true); setGiftItemInfo(item); }} 
+                          className="flex-1 bg-fuchsia-50 hover:bg-fuchsia-100 text-fuchsia-700 font-extrabold py-3 rounded-xl transition-all border-2 border-transparent hover:border-fuchsia-200"
+                        >
+                          선물하기
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* --- MANAGE TAB (ADMIN) --- */}
+      {activeTab === 'manage' && assets.role === 'admin' && (
+        <div className="space-y-8">
+          <div className="flex justify-between items-center bg-white p-6 rounded-3xl border-2 border-purple-100 shadow-sm">
+            <h2 className="text-xl font-black text-purple-900">상점 상품 리스트</h2>
+            <button onClick={() => openForm()} className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-md">새 상품 추가</button>
+          </div>
+
+          {showProductForm && (
+            <div className="bg-purple-50 p-8 rounded-[2rem] border-2 border-purple-200 animate-in zoom-in-95">
+              <h3 className="font-black text-purple-900 mb-6 text-xl">{editProduct ? '상품 수정' : '새 상품 추가'}</h3>
+              <form onSubmit={handleProductSubmit} className="space-y-5">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <input type="text" required placeholder="상품명" className="w-full bg-white border-2 border-purple-100 text-purple-900 rounded-xl px-5 py-4 font-bold" value={prodName} onChange={e => setProdName(e.target.value)} />
+                  <input type="text" required placeholder="이모지 아이콘 (예: 🎁)" className="w-full bg-white border-2 border-purple-100 text-purple-900 rounded-xl px-5 py-4 font-bold" value={prodIcon} onChange={e => setProdIcon(e.target.value)} />
+                  <input type="number" required placeholder="가격 (G)" className="w-full bg-white border-2 border-purple-100 text-purple-900 rounded-xl px-5 py-4 font-bold" value={prodPrice} onChange={e => setProdPrice(e.target.value)} />
+                  <input type="number" required placeholder="재고 수량" className="w-full bg-white border-2 border-purple-100 text-purple-900 rounded-xl px-5 py-4 font-bold" value={prodStock} onChange={e => setProdStock(e.target.value)} />
+                </div>
+                <input type="text" placeholder="상품 설명" className="w-full bg-white border-2 border-purple-100 text-purple-900 rounded-xl px-5 py-4 font-bold" value={prodDesc} onChange={e => setProdDesc(e.target.value)} />
+                <div className="flex flex-col sm:flex-row items-center gap-4 bg-white p-5 rounded-2xl border-2 border-purple-100">
+                  <label className="flex items-center gap-3 cursor-pointer font-bold text-purple-900">
+                    <input type="checkbox" checked={prodRefundable} onChange={e => setProdRefundable(e.target.checked)} className="w-5 h-5 accent-purple-600" />
+                    환불 가능 여부
+                  </label>
+                  {prodRefundable && (
+                    <div className="flex items-center gap-3">
+                      <span className="font-bold text-purple-400">|</span>
+                      <span className="font-bold text-purple-700">구매 후</span>
+                      <input type="number" className="w-24 bg-purple-50 border-2 border-purple-200 rounded-xl px-3 py-2 font-black text-center text-purple-900 focus:outline-none focus:border-purple-500" value={prodRefundLimit} onChange={e => setProdRefundLimit(e.target.value)} />
+                      <span className="font-bold text-purple-700">시간 내 환불 가능</span>
+                    </div>
+                  )}
+                </div>
+                <div className="flex gap-4 pt-4">
+                  <button type="submit" className="flex-1 bg-purple-900 hover:bg-purple-950 text-white font-extrabold py-4 rounded-xl transition-colors">저장하기</button>
+                  <button type="button" onClick={() => setShowProductForm(false)} className="flex-1 bg-white text-purple-900 border-2 border-purple-200 hover:bg-purple-50 font-extrabold py-4 rounded-xl transition-colors">취소</button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {distMode && (
+            <div className="bg-fuchsia-50 p-8 rounded-[2rem] border-2 border-fuchsia-200 animate-in zoom-in-95">
+              <h3 className="font-black text-fuchsia-900 mb-6 text-xl flex items-center gap-2">
+                <Gift className="w-6 h-6" /> 
+                '{storeProducts.find(p=>p.id===distMode)?.name}' 강제 배부
+              </h3>
+              <form onSubmit={handleDistribute} className="space-y-6">
+                <CustomMultiSelect 
+                  options={usersData.filter(u=>u.role==='student').map(u=>({label:u.name, value:u.id}))}
+                  selectedValues={distTargets} onChange={setDistTargetIds} placeholder="지급할 학생들을 다중 선택하세요"
+                />
+                <div className="flex gap-4 pt-2">
+                  <button type="submit" className="flex-1 bg-fuchsia-600 hover:bg-fuchsia-700 text-white font-extrabold py-4 rounded-xl shadow-lg transition-colors">일괄 지급 실행</button>
+                  <button type="button" onClick={() => {setDistMode(null); setDistTargetIds([]);}} className="flex-1 bg-white hover:bg-fuchsia-100 text-fuchsia-900 border-2 border-fuchsia-200 font-extrabold py-4 rounded-xl transition-colors">취소</button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {storeProducts.map(prod => (
+              <div key={prod.id} className="bg-white rounded-3xl border-2 border-purple-100 p-6 flex flex-col gap-4 hover:border-purple-300 hover:shadow-lg transition-all">
+                <div className="flex items-center gap-4">
+                  <div className="text-4xl bg-purple-50 p-3 rounded-2xl">{prod.icon}</div>
+                  <div>
+                    <h4 className="font-black text-purple-950 text-lg">{prod.name}</h4>
+                    <p className="font-bold text-purple-600">{formatMoney(prod.price)} | 재고: {prod.stock}</p>
+                  </div>
+                </div>
+                <div className="flex gap-2 mt-auto pt-4 border-t-2 border-purple-50">
+                  <button onClick={() => setDistMode(prod.id)} className="flex-1 bg-purple-100 hover:bg-purple-200 text-purple-800 font-bold py-2.5 rounded-xl transition-colors">배부</button>
+                  <button onClick={() => openForm(prod)} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold py-2.5 rounded-xl transition-colors">수정</button>
+                  <button onClick={() => onManageProduct('delete', prod)} className="flex-1 bg-rose-100 hover:bg-rose-200 text-rose-800 font-bold py-2.5 rounded-xl transition-colors">삭제</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </main>
+  );
+}
