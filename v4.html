@@ -1,0 +1,2435 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HH 경제교실</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <!-- React & ReactDOM -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  
+  <!-- Babel -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Firebase Compat (v10) - RTDB 전용 -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+
+  <style>
+    .scrollbar-hide::-webkit-scrollbar { display: none; }
+    .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+    @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+    .animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
+    @keyframes zoomIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+    .animate-zoom-in { animation: zoomIn 0.2s ease-out forwards; }
+    
+    /* 로그인 배경 그라데이션 */
+    @keyframes gradientBG {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+    .animate-gradient {
+      background-size: 200% 200%;
+      animation: gradientBG 15s ease infinite;
+    }
+
+    /* 공지사항 무한 롤링 (마키) */
+    .marquee-container { overflow: hidden; white-space: nowrap; width: 100%; display: flex; align-items: center; }
+    .marquee-content { display: inline-flex; animation: marquee 25s linear infinite; }
+    .marquee-content:hover { animation-play-state: paused; }
+    @keyframes marquee {
+      0% { transform: translateX(0); }
+      100% { transform: translateX(-50%); }
+    }
+  </style>
+</head>
+<body class="bg-[#F5F3FF] text-purple-950 font-sans antialiased overflow-x-hidden">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // ============================================================================
+    // [1] Firebase 설정 및 초기화
+    // ============================================================================
+    const firebaseConfig = {
+      databaseURL: "https://class-chat-6-7-default-rtdb.asia-southeast1.firebasedatabase.app/"
+    };
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    // ============================================================================
+    // [2] 초기 데이터 모음
+    // ============================================================================
+    const DEFAULT_TABS = [
+      { id: 'dashboard', label: '대시보드', order: 1 },
+      { id: 'jobs', label: '직업', order: 2 },
+      { id: 'invest', label: '투자(주식)', order: 3 },
+      { id: 'bank', label: '은행', order: 4 },
+      { id: 'store', label: '상점/보관함', order: 5 },
+      { id: 'donate', label: '기부 센터', order: 6 }
+    ];
+
+    const INITIAL_SETTINGS = {
+      googleSheetUrl: '', stockLastUpdated: 0,
+      updateInterval: { days: 0, hours: 1, minutes: 0 },
+      conversion: { divideBy: 100, roundMode: 'round', decimals: 0 },
+      providerText: 'Google Finance',
+      sessionTimeMin: 10, sessionWarnMin: 2,
+      transferMin: 0, transferMax: 0, transferFee: 0,
+      transferNotice: '', 
+      isStatsPublic: true,
+      tabs: DEFAULT_TABS,
+      notices: [] 
+    };
+
+    const INITIAL_USERS = [
+      { id: '1', name: '강유주', pass: '6701', role: 'student', canFine: false, profileUrl: '', jobId: '', jobChecklist: {} },
+      { id: '2', name: '고윤서', pass: '6702', role: 'student', canFine: false, profileUrl: '', jobId: '', jobChecklist: {} },
+      { id: '3', name: '공윤호', pass: '6703', role: 'student', canFine: false, profileUrl: '', jobId: '', jobChecklist: {} },
+      { id: 'admin', name: '관리자', pass: '1111', role: 'admin', canFine: true, profileUrl: '' }
+    ];
+
+    const INITIAL_JOBS = [
+      { id: 'j1', title: '흰우유해적단 -상-', desc: '아침에 급식소에서 우유를 가져옵니다. 번호가 있는 집게를 꽂아두는 것 까지 마무리 해야합니다.', salary: 6000, maxUsers: 1, isHiring: true, allowSelfApply: false },
+      { id: 'j2', title: '흰우유해적단 -하-', desc: '다 먹은 우유를 모아 다시 급식소로 가져다 놓습니다. 점심 먹으러 갈 때 진행합니다.', salary: 5000, maxUsers: 1, isHiring: true, allowSelfApply: false },
+      { id: 'j3', title: '매의 눈', desc: '학생들의 1인1역의 수행 상태를 점검하고 기록합니다. 여기에 기록한 내용은 주급에 영향을 미칩니다.', salary: 5800, maxUsers: 1, isHiring: true, allowSelfApply: false },
+      { id: 'j4', title: '엘사', desc: '제빙기에 물을 채웁니다. 겨울이라고 우리가 얼음을 안먹을 것 같나..?', salary: 5500, maxUsers: 1, isHiring: true, allowSelfApply: false },
+      { id: 'j5', title: '글자감별사', desc: '알림장을 검사하거나, 알림장이 없는 경우 다른 걸 검사할 수 있습니다.', salary: 5000, maxUsers: 1, isHiring: true, allowSelfApply: false },
+      { id: 'j6', title: '줄세우기', desc: '체육시간, 점심시간에 학생들이 줄을 잘 설 수 있도록 도와주고, 앞장서서 갑니다.', salary: 5900, maxUsers: 1, isHiring: true, allowSelfApply: false },
+      { id: 'j7', title: '지우개', desc: '시간표를 바꾸고, 날짜를 바꾸고, 칠판을 지워야 합니다.', salary: 4800, maxUsers: 1, isHiring: true, allowSelfApply: false },
+      { id: 'j8', title: '행동단속카메라', desc: '규칙 및 지각을 관리합니다. 주로 지각을 많이 보게 되지 않을까요...?', salary: 5200, maxUsers: 1, isHiring: true, allowSelfApply: false },
+      { id: 'j9', title: '나눔이', desc: '안내장 등 무언가를 나눠야 할 경우 선생님이 부를겁니다.', salary: 5100, maxUsers: 1, isHiring: true, allowSelfApply: false },
+      { id: 'j10', title: '기상청', desc: '아침에 먼저 와서 창문을 열어 환기를 시킵니다.', salary: 5400, maxUsers: 1, isHiring: true, allowSelfApply: false },
+      { id: 'j11', title: '그루트', desc: '식물에 물을 줍니다. 주 2회를 기본으로 하고, 필요한 경우 추가로 줄 수도 있겠죠?', salary: 4800, maxUsers: 1, isHiring: true, allowSelfApply: false },
+      { id: 'j12', title: '환경부', desc: '매주 수요일 방과후에 사물함 위를 물티슈 등으로 닦아야 합니다.', salary: 4400, maxUsers: 1, isHiring: true, allowSelfApply: false },
+      { id: 'j13', title: '큐레이터', desc: '작품을 게시하는 것을 도와주고, 작품 게시판 자체를 관리합니다.', salary: 4600, maxUsers: 1, isHiring: true, allowSelfApply: false },
+      { id: 'j14', title: '국세청', desc: '일주일마다 열심히 일을 한 학생들에게 급여를 지급합니다.', salary: 5500, maxUsers: 1, isHiring: true, allowSelfApply: false },
+      { id: 'j15', title: '매점주인', desc: '상점을 관리하고, 데이터베이스를 보고 상품을 지급합니다.', salary: 5200, maxUsers: 1, isHiring: true, allowSelfApply: false },
+      { id: 'j16', title: '쓰레기 방범대', desc: '일주일에 한 번 재활용 쓰레기와 일반쓰레기통을 비워주세요', salary: 5200, maxUsers: 3, isHiring: true, allowSelfApply: false },
+      { id: 'j17', title: '문지기', desc: '문이 열려 있다면 먼저 나서서 닫습니다.', salary: 5200, maxUsers: 1, isHiring: true, allowSelfApply: false },
+      { id: 'j18', title: '청 소', desc: '주 1~2회정도 교실을 청소합니다. 주로 방과후에 진행합니다.', salary: 6000, maxUsers: 5, isHiring: true, allowSelfApply: false }
+    ];
+
+    const INITIAL_STOCKS = [
+      { id: 's_samsung', ticker: 'KRX:005930', name: '삼성전자', icon: '📱', isVirtual: false, currentPrice: 800, prevPrice: 800, lastUpdated: 0 },
+      { id: 's_apple', ticker: 'AAPL', name: '애플', icon: '🍎', isVirtual: false, currentPrice: 2000, prevPrice: 2000, lastUpdated: 0 },
+      { id: 's_virtual', ticker: 'CLASS', name: '6학년3반컴퍼니', icon: '🏫', isVirtual: true, currentPrice: 1000, prevPrice: 1000, lastUpdated: 0 }
+    ];
+
+    const INITIAL_BANK = [
+      { id: 'test', name: '테스트용 (1분)', days: 0, hours: 0, minutes: 1, seconds: 0, rate: 0.01, rateText: '1.0%' }
+    ];
+
+    const INITIAL_STORE = [
+      { id: 's1', name: '간식', desc: '마가렛트', price: 2000, stock: 26, icon: '🍪', refundable: true, refundLimitHours: 24, isPaused: false, allowUseIfPaused: true }
+    ];
+
+    const INITIAL_DONATION_GOALS = [
+      { id: 'g1', title: '도비는 자유예요', desc: '1시간 자유시간 획득', current: 0, target: 100000 }
+    ];
+
+    // ============================================================================
+    // [3] 유틸리티 함수
+    // ============================================================================
+    const formatMoney = (num) => new Intl.NumberFormat('ko-KR').format(Math.floor(num || 0)) + 'G';
+    
+    const formatDate = (dateInput) => {
+      const date = new Date(dateInput);
+      const y = date.getFullYear(), m = String(date.getMonth() + 1).padStart(2, '0'), d = String(date.getDate()).padStart(2, '0');
+      const h = String(date.getHours()).padStart(2, '0'), mn = String(date.getMinutes()).padStart(2, '0');
+      return `${y}-${m}-${d} ${h}:${mn}`;
+    };
+
+    const getYYYYMMDD = (dateInput) => {
+      const d = new Date(dateInput);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    };
+
+    const getThisWeekDays = () => {
+      const curr = new Date();
+      const day = curr.getDay(); // 0(Sun) ~ 6(Sat)
+      const diff = curr.getDate() - day + (day === 0 ? -6 : 1); 
+      const startOfWeek = new Date(curr.setDate(diff));
+      const days = [];
+      for(let i=0; i<5; i++) { // 월~금
+        const d = new Date(startOfWeek);
+        d.setDate(startOfWeek.getDate() + i);
+        days.push(d);
+      }
+      return days;
+    };
+
+    const parseAmount = (str) => parseInt(String(str).replace(/[^0-9-]/g, ''), 10) || 0;
+
+    const applyConversion = (rawPrice, settings) => {
+      if (!settings) return rawPrice;
+      let price = rawPrice / (settings.divideBy || 100);
+      const mult = Math.pow(10, settings.decimals || 0);
+      if (settings.roundMode === 'round') price = Math.round(price * mult) / mult;
+      else if (settings.roundMode === 'ceil') price = Math.ceil(price * mult) / mult;
+      else if (settings.roundMode === 'floor') price = Math.floor(price * mult) / mult;
+      return price;
+    };
+
+    const convertGoogleSheetUrl = (url) => {
+      if (!url) return '';
+      if (url.includes('/gviz/tq?tqx=out:csv')) return url; 
+      const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+      if (match && match[1]) {
+        const sheetId = match[1];
+        const gidMatch = url.match(/[#&]gid=([0-9]+)/);
+        const gidParam = gidMatch ? `&gid=${gidMatch[1]}` : '';
+        return `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv${gidParam}`;
+      }
+      return url;
+    };
+
+    // ============================================================================
+    // [4] 공통 UI 컴포넌트
+    // ============================================================================
+    const Badge = ({ children, type }) => {
+      const styles = { positive: 'bg-green-100 text-green-700', negative: 'bg-red-100 text-red-700', neutral: 'bg-slate-100 text-slate-700' };
+      return <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${styles[type]}`}>{children}</span>;
+    };
+
+    const Modal = ({ isOpen, title, children, onClose, iconStr, color = 'purple' }) => {
+      if (!isOpen) return null;
+      const colorMap = {
+        purple: 'border-purple-100 text-purple-900 bg-purple-50 text-purple-600',
+        rose: 'border-rose-100 text-rose-900 bg-rose-50 text-rose-600',
+        indigo: 'border-indigo-100 text-indigo-900 bg-indigo-50 text-indigo-600',
+        red: 'border-red-100 text-red-900 bg-red-50 text-red-600',
+        yellow: 'border-yellow-100 text-yellow-900 bg-yellow-50 text-yellow-600',
+        emerald: 'border-emerald-100 text-emerald-900 bg-emerald-50 text-emerald-600'
+      };
+      const c = colorMap[color] || colorMap.purple;
+      
+      return (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-purple-950/60 backdrop-blur-sm p-4 animate-fade-in">
+          <div className={`bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border-2 ${c.split(' ')[0]} flex flex-col max-h-[90vh] animate-zoom-in`}>
+            <div className={`p-5 border-b-2 flex justify-between items-center ${c.split(' ')[2]}`}>
+              <h3 className={`text-xl font-black flex items-center gap-3 ${c.split(' ')[1]}`}>
+                {iconStr && <div className={`w-8 h-8 rounded-lg bg-white shadow-sm flex items-center justify-center ${c.split(' ')[3]}`}><i className={iconStr}></i></div>}
+                {title}
+              </h3>
+              {onClose && <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-700 transition-colors"><i className="fa-solid fa-xmark text-xl"></i></button>}
+            </div>
+            <div className="p-6 overflow-y-auto flex-1 scrollbar-hide">{children}</div>
+          </div>
+        </div>
+      );
+    };
+
+    const CustomDropdown = ({ options, value, onChange, placeholder }) => {
+      return (
+        <select className="w-full bg-purple-50 border-2 border-purple-100 text-purple-900 rounded-2xl px-5 py-4 font-bold outline-none focus:border-purple-400 transition-colors" value={value} onChange={e=>onChange(e.target.value)}>
+          <option value="" disabled>{placeholder}</option>
+          {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      );
+    };
+
+    // ============================================================================
+    // [5] 뷰 컴포넌트들
+    // ============================================================================
+    
+    // --- [로그인 화면] ---
+    function LoginView({ onLogin, users, showAlert }) {
+      const [selectedUser, setSelectedUser] = useState(null);
+      const [password, setPassword] = useState('');
+      const [useAuto, setUseAuto] = useState(false);
+      const [useSession, setUseSession] = useState(true);
+      const [isLoggingIn, setIsLoggingIn] = useState(false);
+      const [isUserModalOpen, setIsUserModalOpen] = useState(false);
+      const sortedUsers = [...users].sort((a, b) => (a.role === 'admin' ? 1 : b.role === 'admin' ? -1 : a.name.localeCompare(b.name)));
+
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        if (!selectedUser) return showAlert('이름을 선택해주세요.');
+        if (!password) return showAlert('비밀번호를 입력해주세요.');
+        if (String(selectedUser.pass) !== String(password)) return showAlert('비밀번호가 일치하지 않습니다.');
+        
+        setIsLoggingIn(true);
+        setTimeout(() => {
+          onLogin(selectedUser.id, selectedUser, useAuto, useSession);
+        }, 800);
+      };
+
+      return (
+        <div className="min-h-screen flex items-center justify-center p-4 relative z-0 bg-gradient-to-br from-purple-900 via-indigo-900 to-purple-950 animate-gradient">
+          <div className="bg-white rounded-[2.5rem] p-8 sm:p-10 shadow-2xl relative overflow-hidden border-4 border-purple-200/50 w-full max-w-md animate-zoom-in">
+            <div className="flex flex-col items-center mb-8">
+              <div className="w-20 h-20 bg-gradient-to-tr from-fuchsia-600 to-purple-600 rounded-3xl flex items-center justify-center shadow-xl mb-4 text-white">
+                <i className="fa-solid fa-graduation-cap text-4xl"></i>
+              </div>
+              <h1 className="text-3xl font-black text-purple-950 text-center tracking-tight">HH 경제교실</h1>
+              <p className="text-purple-500 font-bold text-center mt-2">이름을 선택하고 로그인하세요.</p>
+            </div>
+
+            {!selectedUser ? (
+              <div className="animate-fade-in">
+                 <button onClick={() => setIsUserModalOpen(true)} className="w-full bg-white border-2 border-purple-200 text-purple-900 text-xl font-black py-5 rounded-2xl shadow-sm hover:border-purple-500 transition-colors flex justify-between items-center px-6">
+                    <span>내 이름 선택하기</span>
+                    <i className="fa-solid fa-users text-purple-400"></i>
+                 </button>
+              </div>
+            ) : (
+              <form onSubmit={handleSubmit} className="space-y-6 animate-fade-in">
+                <div className="flex items-center gap-4 bg-purple-50 p-4 rounded-2xl border-2 border-purple-100">
+                  <div className="flex-1">
+                    <span className="text-xs font-bold text-purple-500">선택된 사용자</span>
+                    <p className="text-xl font-black text-purple-900">{selectedUser.name} <span className="text-sm font-bold text-purple-400">({selectedUser.role === 'admin' ? '관리자' : '학생'})</span></p>
+                  </div>
+                  <button type="button" onClick={() => {setSelectedUser(null); setPassword('');}} className="bg-white border-2 border-purple-200 text-purple-600 px-4 py-2 rounded-xl font-bold text-sm hover:bg-purple-100">변경</button>
+                </div>
+                
+                <input type="password" autoFocus placeholder="비밀번호 입력" className="w-full bg-white border-2 border-purple-200 text-purple-900 text-center text-2xl tracking-widest rounded-2xl px-5 py-4 outline-none focus:border-purple-600 font-black shadow-inner" value={password} onChange={(e) => setPassword(e.target.value)} />
+                
+                <div className="bg-slate-50 p-4 rounded-2xl space-y-3 border border-slate-200">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input type="checkbox" checked={useAuto} onChange={e=>setUseAuto(e.target.checked)} className="w-5 h-5 accent-purple-600 rounded" />
+                    <span className="font-bold text-slate-700 text-sm">자동 로그인 <span className="text-red-500 text-xs">(공용 PC 사용금지, 비번 변경시 해제)</span></span>
+                  </label>
+                  {selectedUser.role !== 'admin' && (
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input type="checkbox" checked={useSession} onChange={e=>setUseSession(e.target.checked)} className="w-5 h-5 accent-purple-600 rounded" />
+                      <span className="font-bold text-slate-700 text-sm">보안 세션 켜기 (미조작시 자동 로그아웃)</span>
+                    </label>
+                  )}
+                </div>
+
+                <button type="submit" disabled={isLoggingIn} className="w-full bg-purple-600 hover:bg-purple-700 text-white font-black text-lg py-5 rounded-2xl shadow-lg transition-all flex justify-center items-center gap-2 disabled:bg-purple-400">
+                  {isLoggingIn ? <><i className="fa-solid fa-circle-notch fa-spin"></i> 접속 중...</> : '로그인'}
+                </button>
+              </form>
+            )}
+          </div>
+
+          <Modal isOpen={isUserModalOpen} title="이름 선택" iconStr="fa-solid fa-users" onClose={() => setIsUserModalOpen(false)}>
+             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+               {sortedUsers.map(u => (
+                 <button key={u.id} onClick={() => {setSelectedUser(u); setPassword(''); setIsUserModalOpen(false);}} className={`p-4 rounded-2xl font-black text-sm transition-transform hover:-translate-y-1 border-2 shadow-sm ${u.role === 'admin' ? 'bg-indigo-50 border-indigo-200 text-indigo-800' : 'bg-purple-50 border-purple-100 text-purple-800'}`}>
+                   {u.name}
+                 </button>
+               ))}
+             </div>
+          </Modal>
+        </div>
+      );
+    }
+
+    // --- [대시보드 화면] ---
+    function DashboardView({ assets, dbData, db, showAlert, showConfirm, setGlobalView }) {
+      const [modal, setModal] = useState(null);
+      const [selectedTxs, setSelectedTxs] = useState([]);
+      
+      const [tTarget, setTTarget] = useState(''); const [tAmount, setTAmt] = useState('');
+      const [aIds, setAIds] = useState([]); const [aType, setAType] = useState('add'); const [aAmt, setAAmt] = useState(''); const [aReason, setAReason] = useState('');
+      const [fIds, setFIds] = useState([]); const [fAmt, setFAmt] = useState(''); const [fReason, setFReason] = useState('');
+      
+      const usersList = Object.values(dbData.users).filter(u => u.role === 'student');
+
+      // 송금
+      const executeTransfer = async (e) => {
+        e.preventDefault();
+        const amt = parseInt(tAmount, 10);
+        if (!tTarget || isNaN(amt) || amt <= 0) return;
+        
+        const trMin = dbData.settings?.transferMin || 0;
+        const trMax = dbData.settings?.transferMax || 0;
+        const trFee = dbData.settings?.transferFee || 0;
+        const totalCost = amt + trFee;
+
+        if (trMin > 0 && amt < trMin) return showAlert(`최소 송금액은 ${formatMoney(trMin)}입니다.`);
+        if (trMax > 0 && amt > trMax) return showAlert(`최대 송금액은 ${formatMoney(trMax)}입니다.`);
+        if (totalCost > assets.cash) return showAlert(`현금이 부족합니다. (수수료 포함 필요액: ${formatMoney(totalCost)})`);
+
+        const targetUser = dbData.users[tTarget];
+        const hasRecent = (dbData.txs || []).some(tx => tx.userId === assets.id && tx.type === '송금' && tx.desc.includes(targetUser.name) && Date.now() - tx.timestamp < 7*24*3600000);
+        
+        showConfirm(hasRecent ? `정말 ${targetUser.name}님에게 ${formatMoney(amt)}을 송금하시겠습니까?` : `⚠️ 주의: 최근 1주일 내 송금 기록이 없습니다.\n사기 피해에 주의하세요. 정말 송금할까요?`, async () => {
+          const updates = {};
+          updates[`economy_users/${assets.id}/cash`] = assets.cash - totalCost;
+          updates[`economy_users/${tTarget}/cash`] = targetUser.cash + amt;
+          
+          const tx1 = db.ref('economy_transactions').push().key;
+          updates[`economy_transactions/${tx1}`] = { id: tx1, userId: assets.id, type: '송금', desc: `${targetUser.name}에게 이체`, amount: `-${formatMoney(amt)}`, balance: formatMoney(assets.cash-amt), isPositive: false, timestamp: Date.now() };
+          
+          if (trFee > 0) {
+            const txFee = db.ref('economy_transactions').push().key;
+            updates[`economy_transactions/${txFee}`] = { id: txFee, userId: assets.id, type: '수수료', desc: `송금 수수료`, amount: `-${formatMoney(trFee)}`, balance: formatMoney(assets.cash-totalCost), isPositive: false, timestamp: Date.now()+1 };
+          }
+
+          const tx2 = db.ref('economy_transactions').push().key;
+          updates[`economy_transactions/${tx2}`] = { id: tx2, userId: tTarget, type: '입금', desc: `${assets.name}으로부터 입금`, amount: `+${formatMoney(amt)}`, balance: formatMoney(targetUser.cash+amt), isPositive: true, timestamp: Date.now()+2 };
+          
+          await db.ref('/').update(updates);
+          setModal(null); setTTarget(''); setTAmt(''); showAlert('송금을 완료했습니다.');
+        });
+      };
+
+      const executeAdminAction = async (e) => {
+        e.preventDefault();
+        const amt = parseInt(aAmt, 10);
+        if (aIds.length === 0 || isNaN(amt) || amt <= 0) return;
+        const updates = {};
+        aIds.forEach((id, idx) => {
+          const u = dbData.users[id];
+          const newCash = aType === 'add' ? u.cash + amt : u.cash - amt;
+          updates[`economy_users/${id}/cash`] = newCash;
+          const txRef = db.ref('economy_transactions').push().key;
+          updates[`economy_transactions/${txRef}`] = { id: txRef, userId: id, type: aType==='add'?'시스템 지급':'시스템 차감', desc: aReason||'관리자 반영', amount: (aType==='add'?'+':'-')+formatMoney(amt), balance: formatMoney(newCash), isPositive: aType==='add', timestamp: Date.now()+idx };
+        });
+        await db.ref('/').update(updates); setModal(null); setAIds([]); setAAmt(''); setAReason(''); showAlert('자산 변경 완료!');
+      };
+
+      const executeFine = async (e) => {
+        e.preventDefault();
+        const amt = parseInt(fAmt, 10);
+        if (fIds.length === 0 || isNaN(amt) || amt <= 0) return;
+        const updates = {};
+        fIds.forEach((id, idx) => {
+          const u = dbData.users[id];
+          const newCash = u.cash - amt;
+          updates[`economy_users/${id}/cash`] = newCash;
+          const txRef = db.ref('economy_transactions').push().key;
+          updates[`economy_transactions/${txRef}`] = { id: txRef, userId: id, type: '벌금 부과', desc: `${fReason} (부과자: ${assets.name})`, amount: `-${formatMoney(amt)}`, balance: formatMoney(newCash), isPositive: false, timestamp: Date.now()+idx };
+        });
+        await db.ref('/').update(updates); setModal(null); setFIds([]); setFAmt(''); setFReason(''); showAlert('벌금 부과 완료!');
+      };
+
+      const deleteTxs = (restore) => {
+        if(selectedTxs.length === 0) return;
+        showConfirm(`선택한 ${selectedTxs.length}개의 내역을 삭제${restore?'하고 금액을 복원':''}할까요?`, async () => {
+          const updates = {};
+          selectedTxs.forEach((txId, idx) => {
+            const tx = dbData.txs.find(t => t.id === txId);
+            if(!tx) return;
+            updates[`economy_transactions/${txId}`] = null;
+            if(restore && dbData.users[tx.userId]) {
+              const u = dbData.users[tx.userId];
+              const pAmt = parseAmount(tx.amount);
+              const newCash = tx.isPositive ? u.cash - pAmt : u.cash + pAmt;
+              updates[`economy_users/${tx.userId}/cash`] = newCash;
+              const cRef = db.ref('economy_transactions').push().key;
+              updates[`economy_transactions/${cRef}`] = { id: cRef, userId: tx.userId, type: '내역 취소', desc: `복구: ${tx.desc}`, amount: tx.isPositive ? `-${formatMoney(pAmt)}` : `+${formatMoney(pAmt)}`, balance: formatMoney(newCash), isPositive: !tx.isPositive, timestamp: Date.now()+idx };
+            }
+          });
+          await db.ref('/').update(updates); setModal(null); setSelectedTxs([]); showAlert('삭제 완료!');
+        });
+      };
+
+      const displayTxs = assets.role === 'admin' ? dbData.txs : dbData.txs.filter(t => t.userId === assets.id);
+      
+      const today = new Date().setHours(0,0,0,0);
+      const [statDate, setStatDate] = useState(today);
+      const txDates = [...new Set(dbData.txs.map(t => new Date(t.timestamp).setHours(0,0,0,0)))].sort((a,b) => b - a);
+
+      let stats = { m:0, f:0, s:0, t:0, d:0 };
+      dbData.txs.filter(t => new Date(t.timestamp).setHours(0,0,0,0) === statDate).forEach(t => {
+        const num = parseAmount(t.amount);
+        if (t.type === '시스템 지급') stats.m += num;
+        if (t.type === '시스템 차감' || t.type === '벌금 부과') stats.f += num;
+        if (t.type === '상점 구매') stats.s += num;
+        if (t.type === '송금' && !t.isPositive) stats.t += num;
+        if (t.type === '기부' && !t.isPositive) stats.d += num;
+      });
+
+      const trMin = dbData.settings?.transferMin || 0;
+      const trMax = dbData.settings?.transferMax || 0;
+      const trFee = dbData.settings?.transferFee || 0;
+      const trNotice = dbData.settings?.transferNotice || '';
+      const hasTrRule = trMin > 0 || trMax > 0 || trFee > 0 || trNotice.length > 0;
+
+      return (
+        <div className="animate-fade-in space-y-8">
+          <Modal isOpen={modal==='transfer'} title="송금하기" iconStr="fa-solid fa-paper-plane" onClose={()=>setModal(null)}>
+            <form onSubmit={executeTransfer} className="space-y-6">
+              {trNotice && (
+                <div className="bg-yellow-100 border-2 border-yellow-300 p-4 rounded-2xl text-yellow-900 font-bold mb-4 shadow-sm flex items-start gap-3">
+                  <i className="fa-solid fa-circle-exclamation mt-1 text-yellow-600"></i>
+                  <p className="whitespace-pre-wrap leading-relaxed">{trNotice}</p>
+                </div>
+              )}
+              <div><label className="block text-sm font-extrabold mb-2">대상 선택</label><select autoFocus className="w-full p-4 bg-purple-50 rounded-xl font-bold outline-none border-2 border-transparent focus:border-purple-300" value={tTarget} onChange={e=>setTTarget(e.target.value)}><option value="">받을 사람을 선택하세요</option>{usersList.filter(u=>u.id!==assets.id).map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select></div>
+              <div><label className="block text-sm font-extrabold mb-2">금액 (보유: {formatMoney(assets.cash)})</label><input type="number" required className="w-full p-4 bg-purple-50 rounded-xl font-bold outline-none border-2 border-transparent focus:border-purple-300" value={tAmount} onChange={e=>setTAmt(e.target.value)}/></div>
+              
+              {(trMin > 0 || trMax > 0 || trFee > 0) && (
+                <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-xl text-yellow-800 text-sm font-bold space-y-1">
+                  {trMin > 0 && <p>• 최소 송금액: {formatMoney(trMin)}</p>}
+                  {trMax > 0 && <p>• 최대 송금액: {formatMoney(trMax)}</p>}
+                  {trFee > 0 && <p>• 송금 수수료: {formatMoney(trFee)} (보내는 사람 부담)</p>}
+                </div>
+              )}
+              <button type="submit" className="w-full bg-purple-600 hover:bg-purple-700 text-white p-4 rounded-xl font-black shadow-lg transition-colors">보내기</button>
+            </form>
+          </Modal>
+
+          <Modal isOpen={modal==='adminAction'} title="학생 자산 일괄 관리" iconStr="fa-solid fa-coins" color="fuchsia" onClose={()=>setModal(null)}>
+             <form onSubmit={executeAdminAction} className="space-y-6">
+               <select multiple autoFocus className="w-full p-4 bg-purple-50 rounded-xl font-bold h-32 outline-none border border-purple-200" value={aIds} onChange={e=>setAIds(Array.from(e.target.selectedOptions, o=>o.value))}>{usersList.map(u=><option key={u.id} value={u.id}>{u.name} ({formatMoney(u.cash)})</option>)}</select>
+               <p className="text-xs text-purple-500 font-bold">※ Ctrl(Cmd) 키를 누르고 클릭하면 다중 선택 가능</p>
+               <div className="flex gap-4"><label className="flex-1 p-3 bg-purple-50 rounded-xl flex items-center justify-center gap-2 font-bold cursor-pointer"><input type="radio" checked={aType==='add'} onChange={()=>setAType('add')} className="w-5 h-5 accent-purple-600"/> 지급(+)</label><label className="flex-1 p-3 bg-fuchsia-50 rounded-xl flex items-center justify-center gap-2 font-bold cursor-pointer"><input type="radio" checked={aType==='sub'} onChange={()=>setAType('sub')} className="w-5 h-5 accent-fuchsia-600"/> 차감(-)</label></div>
+               <input type="number" required placeholder="금액" className="w-full p-4 bg-purple-50 rounded-xl font-bold outline-none" value={aAmt} onChange={(e) => setAAmt(e.target.value)} />
+               <input type="text" placeholder="사유 (예: 월급)" className="w-full p-4 bg-purple-50 rounded-xl font-bold outline-none" value={aReason} onChange={(e) => setAReason(e.target.value)} />
+               <button type="submit" className="w-full bg-purple-900 text-white py-4 rounded-2xl font-extrabold shadow-lg">실행</button>
+             </form>
+          </Modal>
+
+          <Modal isOpen={modal==='fine'} title="벌금 부과하기" iconStr="fa-solid fa-gavel" color="red" onClose={()=>setModal(null)}>
+             <form onSubmit={executeFine} className="space-y-6">
+               <select multiple autoFocus className="w-full p-4 bg-red-50 rounded-xl font-bold h-32 outline-none border border-red-200" value={fIds} onChange={e=>setFIds(Array.from(e.target.selectedOptions, o=>o.value))}>{usersList.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select>
+               <p className="text-xs text-red-500 font-bold">※ 다중 선택 가능</p>
+               <input type="number" required placeholder="벌금액 (마이너스 통장 허용됨)" className="w-full p-4 bg-red-50 rounded-xl font-bold outline-none" value={fAmt} onChange={(e) => setFAmt(e.target.value)} />
+               <input type="text" required placeholder="사유 (필수, 예: 지각)" className="w-full p-4 bg-red-50 rounded-xl font-bold outline-none" value={fReason} onChange={(e) => setFReason(e.target.value)} />
+               <button type="submit" className="w-full bg-red-600 text-white py-4 rounded-2xl font-extrabold shadow-lg">벌금 부과</button>
+             </form>
+          </Modal>
+
+          <Modal isOpen={modal==='txDelete'} title="내역 다중 삭제" iconStr="fa-solid fa-trash-can" color="rose" onClose={()=>setModal(null)}>
+             <div className="space-y-6">
+               <p className="font-bold text-rose-900 text-center leading-relaxed">선택한 {selectedTxs.length}개의 내역을 삭제합니다.<br/>삭제 방식(금액 복구 여부)을 선택해주세요.</p>
+               <div className="space-y-3">
+                 <button type="button" onClick={()=>deleteTxs(false)} className="w-full py-4 bg-rose-100 text-rose-900 font-black rounded-xl hover:bg-rose-200">내역만 지우기 (금액 변동 없음)</button>
+                 <button type="button" onClick={()=>deleteTxs(true)} className="w-full py-4 bg-red-600 text-white font-black rounded-xl shadow-lg hover:bg-red-700">지우고 금액도 함께 복원하기</button>
+               </div>
+             </div>
+          </Modal>
+
+          {/* 퀵 액션 바둑판 */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <button onClick={()=>setModal('transfer')} className="bg-white p-5 rounded-[2rem] shadow-md border-2 border-purple-50 hover:border-purple-200 flex flex-col items-center justify-center gap-3 transition-transform hover:-translate-y-1">
+              <div className="w-14 h-14 bg-purple-100 rounded-2xl flex items-center justify-center text-purple-600 text-2xl"><i className="fa-solid fa-paper-plane"></i></div><span className="font-black text-purple-900">송금하기</span>
+            </button>
+            <button onClick={()=>setGlobalView('donate')} className="bg-white p-5 rounded-[2rem] shadow-md border-2 border-rose-50 hover:border-rose-200 flex flex-col items-center justify-center gap-3 transition-transform hover:-translate-y-1">
+              <div className="w-14 h-14 bg-rose-100 rounded-2xl flex items-center justify-center text-rose-600 text-2xl"><i className="fa-solid fa-heart"></i></div><span className="font-black text-rose-900">기부 센터</span>
+            </button>
+            {(assets.role === 'admin' || assets.canFine) && (
+              <button onClick={()=>setModal('fine')} className="bg-white p-5 rounded-[2rem] shadow-md border-2 border-red-50 hover:border-red-200 flex flex-col items-center justify-center gap-3 transition-transform hover:-translate-y-1">
+                <div className="w-14 h-14 bg-red-100 rounded-2xl flex items-center justify-center text-red-600 text-2xl"><i className="fa-solid fa-gavel"></i></div><span className="font-black text-red-900">벌금 부과</span>
+              </button>
+            )}
+            {assets.role === 'admin' && (
+              <button onClick={()=>setModal('adminAction')} className="bg-purple-900 p-5 rounded-[2rem] shadow-md border-2 border-purple-800 flex flex-col items-center justify-center gap-3 transition-transform hover:-translate-y-1">
+                <div className="w-14 h-14 bg-purple-800 rounded-2xl flex items-center justify-center text-white text-2xl"><i className="fa-solid fa-coins"></i></div><span className="font-black text-white">자산 관리</span>
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <section className="lg:col-span-2 bg-white rounded-[2.5rem] shadow-xl border-2 border-purple-100 overflow-hidden">
+              <div className="p-6 border-b-2 border-purple-50 bg-purple-50/30 flex justify-between items-center">
+                <h2 className="text-xl font-black flex items-center gap-3"><i className="fa-solid fa-clock-rotate-left text-purple-600"></i> {assets.role === 'admin' ? '반 전체 내역' : '내 거래 내역'}</h2>
+                {assets.role === 'admin' && selectedTxs.length > 0 && <button onClick={()=>setModal('txDelete')} className="bg-red-500 text-white font-black px-4 py-2 rounded-xl shadow-md text-sm transition-transform hover:scale-105">선택 삭제 ({selectedTxs.length})</button>}
+              </div>
+              <div className="overflow-x-auto p-2 max-h-[500px] overflow-y-auto scrollbar-hide">
+                <table className="w-full text-sm text-left">
+                  <thead className="text-purple-400 font-extrabold border-b border-purple-50">
+                    <tr>
+                      {assets.role === 'admin' && <th className="p-3 w-10"><input type="checkbox" onChange={e=>setSelectedTxs(e.target.checked?displayTxs.map(t=>t.id):[])} checked={displayTxs.length>0&&selectedTxs.length===displayTxs.length} className="w-4 h-4 accent-purple-600"/></th>}
+                      <th className="p-3">일시</th>{assets.role==='admin'&&<th className="p-3">사용자</th>}<th className="p-3">유형</th><th className="p-3">내용</th><th className="p-3 text-right">증감</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-purple-50">
+                    {displayTxs.map(tx => (
+                      <tr key={tx.id} className="hover:bg-purple-50/50 transition-colors">
+                        {assets.role === 'admin' && <td className="p-3 text-center"><input type="checkbox" checked={selectedTxs.includes(tx.id)} onChange={e=>{if(e.target.checked) setSelectedTxs([...selectedTxs,tx.id]); else setSelectedTxs(selectedTxs.filter(id=>id!==tx.id));}} className="w-4 h-4 accent-purple-600"/></td>}
+                        <td className="p-3 text-gray-500 font-bold whitespace-nowrap">{formatDate(tx.timestamp)}</td>
+                        {assets.role === 'admin' && <td className="p-3 font-black text-purple-950">{dbData.users[tx.userId]?.name || '알수없음'}</td>}
+                        <td className="p-3"><Badge type={tx.isPositive?'positive':tx.type.includes('사용')||tx.type.includes('선물')?'neutral':'negative'}>{tx.type}</Badge></td>
+                        <td className="p-3 font-bold text-purple-900">{tx.desc}</td>
+                        <td className={`p-3 text-right font-black whitespace-nowrap text-lg ${tx.isPositive?'text-purple-600':tx.type.includes('사용')?'text-gray-500':'text-fuchsia-600'}`}>{tx.amount}</td>
+                      </tr>
+                    ))}
+                    {displayTxs.length===0 && <tr><td colSpan={6} className="p-10 text-center text-purple-300 font-bold text-lg">내역이 없습니다.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section className="bg-white rounded-[2.5rem] shadow-xl border-2 border-purple-100 p-8 flex flex-col">
+              <div className="flex justify-between items-center mb-6">
+                 <h3 className="text-xl font-black flex items-center gap-3"><i className="fa-solid fa-chart-pie text-purple-600"></i> 학급 통계</h3>
+                 <select className="bg-purple-50 border border-purple-100 text-purple-900 text-sm font-bold py-1 px-2 rounded-lg outline-none" value={statDate} onChange={e=>setStatDate(Number(e.target.value))}>
+                    <option value={today}>오늘</option>
+                    {txDates.filter(d=>d!==today).map(d=><option key={d} value={d}>{formatDate(d).split(' ')[0]}</option>)}
+                 </select>
+              </div>
+              <div className="space-y-3 flex-1">
+                {[{l:'발행액',v:stats.m,c:'text-purple-600'},{l:'차감/벌금',v:stats.f,c:'text-red-600'},{l:'상점소비',v:stats.s,c:'text-fuchsia-600'},{l:'학생송금',v:stats.t,c:'text-indigo-600'},{l:'전체기부',v:stats.d,c:'text-rose-600'}].map((s,i)=>(
+                  <div key={i} className="flex justify-between items-center p-4 bg-purple-50/50 rounded-2xl border border-purple-50">
+                    <span className="font-extrabold text-purple-800 text-sm">{s.l}</span><span className={`font-black text-lg ${s.c}`}>{formatMoney(s.v)}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+        </div>
+      );
+    }
+
+    // --- [직업(Jobs) 화면 신설] ---
+    function JobsView({ assets, dbData, db, showAlert, showConfirm }) {
+      const [tab, setTab] = useState('my');
+      const [modal, setModal] = useState(null); 
+      
+      // 직업 등록/수정 폼
+      const [jId, setJId] = useState(''); const [jTitle, setJTitle] = useState(''); const [jDesc, setJDesc] = useState('');
+      const [jSal, setJSal] = useState(''); const [jMax, setJMax] = useState(''); 
+      const [jHiring, setJHiring] = useState(true); const [jSelf, setJSelf] = useState(false);
+
+      // 주급 지급용 상태
+      const [payTarget, setPayTarget] = useState(null);
+      const [payAmt, setPayAmt] = useState('');
+
+      const jobs = dbData.jobs || [];
+      const usersList = Object.values(dbData.users).filter(u => u.role === 'student');
+      const myJob = jobs.find(j => j.id === assets.jobId);
+      const weekDays = getThisWeekDays();
+      const todayStr = getYYYYMMDD(new Date());
+
+      // 1. 업무 달력 체크 (학생용)
+      const toggleCheck = async (dStr) => {
+        if(dStr !== todayStr) return; // 당일만 체크 가능
+        const currentChecks = assets.jobChecklist || {};
+        const updates = {};
+        updates[`economy_users/${assets.id}/jobChecklist/${dStr}`] = !currentChecks[dStr];
+        await db.ref('/').update(updates);
+      };
+
+      // 2. 직업 관리 (관리자용)
+      const openJobForm = (j=null) => {
+        if(j) { setJId(j.id); setJTitle(j.title); setJDesc(j.desc); setJSal(j.salary); setJMax(j.maxUsers); setJHiring(j.isHiring); setJSelf(j.allowSelfApply); }
+        else { setJId(''); setJTitle(''); setJDesc(''); setJSal(''); setJMax(''); setJHiring(true); setJSelf(false); }
+        setModal('jobForm');
+      };
+
+      const saveJob = async (e) => {
+        e.preventDefault();
+        const id = jId || db.ref('economy_jobs').push().key;
+        await db.ref(`economy_jobs/${id}`).set({ id, title: jTitle, desc: jDesc, salary: parseInt(jSal,10), maxUsers: parseInt(jMax,10), isHiring: jHiring, allowSelfApply: jSelf });
+        setModal(null); showAlert('직업이 저장되었습니다.');
+      };
+
+      const deleteJob = (id) => {
+        showConfirm('이 직업을 삭제하시겠습니까?\n(배정된 학생들의 직업 정보도 초기화됩니다)', async () => {
+          const updates = {};
+          updates[`economy_jobs/${id}`] = null;
+          usersList.forEach(u => { if(u.jobId === id) updates[`economy_users/${u.id}/jobId`] = ''; });
+          await db.ref('/').update(updates); showAlert('삭제 완료');
+        });
+      };
+
+      // 3. 직업 신청 및 배정
+      const applyJob = (jobId, studentId = assets.id) => {
+        const j = jobs.find(x => x.id === jobId);
+        if(!j) return;
+        const currentCount = usersList.filter(u => u.jobId === jobId).length;
+        if(currentCount >= j.maxUsers && studentId === assets.id && assets.role !== 'admin') return showAlert('모집 인원이 꽉 찼습니다.');
+
+        showConfirm(studentId === assets.id ? `'${j.title}' 직업을 신청(수락) 하시겠습니까?` : '직업을 배정하시겠습니까?', async () => {
+          await db.ref(`economy_users/${studentId}/jobId`).set(jobId);
+          showAlert('배정 완료!');
+        });
+      };
+
+      const removeJob = (studentId) => {
+        showConfirm('해당 학생의 직업을 해제하시겠습니까?', async () => {
+          await db.ref(`economy_users/${studentId}/jobId`).set('');
+          showAlert('해제 완료!');
+        });
+      };
+
+      // 4. 주급 지급 (관리자 전용)
+      const executePaySalary = async (e) => {
+        e.preventDefault();
+        const amt = parseInt(payAmt, 10);
+        if(isNaN(amt)) return;
+        
+        const updates = {};
+        updates[`economy_users/${payTarget.id}/cash`] = (payTarget.cash || 0) + amt;
+        updates[`economy_users/${payTarget.id}/jobChecklist`] = null; // 지급 시 체크리스트 리셋
+        const tId = db.ref('economy_transactions').push().key;
+        updates[`economy_transactions/${tId}`] = { id: tId, userId: payTarget.id, type: '주급 지급', desc: `주급: ${jobs.find(j=>j.id===payTarget.jobId)?.title||'알수없음'}`, amount: `+${formatMoney(amt)}`, balance: formatMoney(payTarget.cash+amt), isPositive: true, timestamp: Date.now() };
+        
+        await db.ref('/').update(updates);
+        setModal(null); setPayTarget(null); showAlert(`${payTarget.name} 학생에게 주급 지급이 완료되었습니다!\n(이번 주 업무 체크 내역은 초기화되었습니다)`);
+      };
+
+      const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+
+      return (
+        <div className="animate-fade-in space-y-8">
+          {/* 모달: 직업 등록/수정 */}
+          <Modal isOpen={modal==='jobForm'} title={jId?'직업 수정':'새 직업 등록'} iconStr="fa-solid fa-briefcase" color="emerald" onClose={()=>setModal(null)}>
+            <form onSubmit={saveJob} className="space-y-4">
+              <input required autoFocus placeholder="직업 이름 (예: 매의 눈)" className="w-full p-4 bg-white border-2 border-emerald-100 rounded-xl font-bold outline-none focus:border-emerald-400" value={jTitle} onChange={e=>setJTitle(e.target.value)}/>
+              <textarea required placeholder="직업에 대한 상세 설명" className="w-full p-4 bg-white border-2 border-emerald-100 rounded-xl font-bold outline-none focus:border-emerald-400 h-24" value={jDesc} onChange={e=>setJDesc(e.target.value)}/>
+              <div className="flex gap-2">
+                <input required type="number" placeholder="주급(G)" className="w-full p-4 bg-white border-2 border-emerald-100 rounded-xl font-bold outline-none focus:border-emerald-400" value={jSal} onChange={e=>setJSal(e.target.value)}/>
+                <input required type="number" placeholder="최대 인원" className="w-full p-4 bg-white border-2 border-emerald-100 rounded-xl font-bold outline-none focus:border-emerald-400" value={jMax} onChange={e=>setJMax(e.target.value)}/>
+              </div>
+              <div className="bg-emerald-50 p-4 rounded-xl space-y-3 border border-emerald-100">
+                 <label className="flex items-center gap-3 font-bold cursor-pointer text-emerald-900">
+                   <input type="checkbox" checked={jHiring} onChange={e=>setJHiring(e.target.checked)} className="w-5 h-5 accent-emerald-600"/> 이 직업 모집 활성화
+                 </label>
+                 <label className="flex items-center gap-3 font-bold cursor-pointer text-emerald-900">
+                   <input type="checkbox" checked={jSelf} onChange={e=>setJSelf(e.target.checked)} className="w-5 h-5 accent-emerald-600"/> 학생들이 스스로 신청 가능하게 허용
+                 </label>
+              </div>
+              <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-xl font-black shadow-lg transition-colors">저장하기</button>
+            </form>
+          </Modal>
+
+          {/* 모달: 주급 지급 (관리자) */}
+          <Modal isOpen={modal==='payJob'} title="주급 정산 및 지급" iconStr="fa-solid fa-sack-dollar" color="emerald" onClose={()=>setModal(null)}>
+             {payTarget && (() => {
+                const j = jobs.find(x => x.id === payTarget.jobId);
+                const checks = payTarget.jobChecklist || {};
+                let checkedCount = 0;
+                weekDays.forEach(d => { if(checks[getYYYYMMDD(d)]) checkedCount++; });
+                
+                return (
+                  <form onSubmit={executePaySalary} className="space-y-6">
+                    <div className="bg-emerald-50 p-5 rounded-2xl border border-emerald-100 text-center">
+                       <h4 className="font-black text-xl text-emerald-950 mb-1">{payTarget.name}</h4>
+                       <p className="text-emerald-700 font-bold">{j?.title} (기본 주급: {formatMoney(j?.salary)})</p>
+                    </div>
+                    <div className="space-y-2">
+                       <p className="font-bold text-sm text-emerald-900">이번 주 업무 수행 내역 ({checkedCount} / 5일)</p>
+                       <div className="flex justify-between gap-2">
+                         {weekDays.map(d => {
+                           const isC = checks[getYYYYMMDD(d)];
+                           return (
+                             <div key={d} className={`flex-1 py-2 rounded-lg text-center border-2 ${isC?'bg-green-100 border-green-300 text-green-700':'bg-gray-100 border-gray-200 text-gray-400'}`}>
+                               <div className="text-xs font-black">{dayNames[d.getDay()]}</div>
+                               <div>{isC ? <i className="fa-solid fa-check"></i> : <i className="fa-solid fa-xmark"></i>}</div>
+                             </div>
+                           )
+                         })}
+                       </div>
+                    </div>
+                    <div className="pt-4 border-t border-emerald-100">
+                      <label className="block text-sm font-extrabold mb-2 text-emerald-900">실제 지급할 주급 입력 (가감 가능)</label>
+                      <input type="number" required autoFocus className="w-full p-4 bg-white border-2 border-emerald-200 rounded-xl font-black text-center text-2xl outline-none focus:border-emerald-500 shadow-inner" value={payAmt} onChange={e=>setPayAmt(e.target.value)} />
+                    </div>
+                    <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white p-4 rounded-xl font-black shadow-lg transition-colors">지급하고 체크리스트 초기화</button>
+                  </form>
+                );
+             })()}
+          </Modal>
+
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-8 rounded-[2.5rem] shadow-xl border-2 border-emerald-100">
+            <h1 className="text-3xl font-black flex items-center gap-4"><div className="bg-emerald-100 p-3 rounded-2xl"><i className="fa-solid fa-briefcase text-emerald-600"></i></div> 직업 (1인 1역)</h1>
+            <div className="flex bg-emerald-50 p-2 rounded-2xl border-2 border-emerald-100 overflow-x-auto w-full sm:w-auto scrollbar-hide">
+              <button onClick={()=>setTab('my')} className={`whitespace-nowrap px-5 py-2.5 font-extrabold rounded-xl transition-all ${tab==='my'?'bg-white text-emerald-900 shadow-md':'text-emerald-600 hover:text-emerald-800'}`}>내 직업 & 업무 달력</button>
+              <button onClick={()=>setTab('list')} className={`whitespace-nowrap px-5 py-2.5 font-extrabold rounded-xl transition-all ${tab==='list'?'bg-white text-emerald-900 shadow-md':'text-emerald-600 hover:text-emerald-800'}`}>모집 중인 직업</button>
+              {assets.role==='admin'&&<button onClick={()=>setTab('mng_jobs')} className={`whitespace-nowrap px-5 py-2.5 font-extrabold rounded-xl transition-all ${tab==='mng_jobs'?'bg-white text-emerald-900 shadow-md':'text-emerald-600 hover:text-emerald-800'}`}>직업 템플릿 관리</button>}
+              {assets.role==='admin'&&<button onClick={()=>setTab('mng_users')} className={`whitespace-nowrap px-5 py-2.5 font-extrabold rounded-xl transition-all ${tab==='mng_users'?'bg-white text-emerald-900 shadow-md':'text-emerald-600 hover:text-emerald-800'}`}>배정 및 주급 관리</button>}
+            </div>
+          </div>
+
+          {/* 1. 내 직업 & 업무 달력 */}
+          {tab === 'my' && (
+            <div className="space-y-6 animate-fade-in">
+               {myJob ? (
+                 <div className="bg-white p-8 rounded-[2.5rem] border-2 border-emerald-100 shadow-xl">
+                   <div className="flex flex-col md:flex-row justify-between gap-6 mb-8 border-b-2 border-emerald-50 pb-8">
+                     <div>
+                       <Badge type="positive">나의 현재 직업</Badge>
+                       <h2 className="text-3xl font-black text-emerald-950 mt-3 mb-2">{myJob.title}</h2>
+                       <p className="text-emerald-700 font-bold">{myJob.desc}</p>
+                     </div>
+                     <div className="bg-emerald-50 px-6 py-4 rounded-2xl border border-emerald-100 self-start md:self-center text-center min-w-[150px]">
+                       <p className="text-xs font-bold text-emerald-600 mb-1">기본 주급</p>
+                       <p className="text-2xl font-black text-emerald-900">{formatMoney(myJob.salary)}</p>
+                     </div>
+                   </div>
+
+                   <h3 className="text-xl font-black text-emerald-900 mb-2 flex items-center gap-2"><i className="fa-regular fa-calendar-check text-emerald-500"></i> 업무 달력</h3>
+                   <p className="text-sm font-bold text-emerald-600 mb-6">매일의 업무 완료 상태를 체크하세요.</p>
+                   
+                   <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
+                     {weekDays.map((d, i) => {
+                       const dStr = getYYYYMMDD(d);
+                       const isToday = dStr === todayStr;
+                       const isChecked = assets.jobChecklist && assets.jobChecklist[dStr];
+                       
+                       return (
+                         <div key={dStr} className={`relative flex flex-col items-center justify-center p-6 rounded-3xl border-4 min-w-[160px] flex-1 transition-all ${isChecked ? 'bg-green-50 border-green-300 text-green-800 shadow-sm' : isToday ? 'bg-emerald-600 border-emerald-600 text-white shadow-xl cursor-pointer hover:bg-emerald-700 hover:-translate-y-2' : 'bg-gray-50 border-gray-200 text-gray-400'}`} onClick={() => isToday && toggleCheck(dStr)}>
+                           {isChecked && <div className="absolute -top-3 -right-3 text-3xl text-green-500 drop-shadow-md animate-zoom-in"><i className="fa-solid fa-circle-check"></i></div>}
+                           <span className="font-black text-lg">{dayNames[d.getDay()]}</span>
+                           <span className="text-4xl font-black my-3 tracking-tighter">{d.getDate()}</span>
+                           <span className="text-xs font-bold text-center leading-tight">
+                             {isChecked ? '업무 완료' : isToday ? '클릭하여\n업무 완료를 체크하세요' : '당일만 체크가능'}
+                           </span>
+                         </div>
+                       )
+                     })}
+                   </div>
+                 </div>
+               ) : (
+                 <div className="bg-white p-16 rounded-[2.5rem] border-2 border-dashed border-emerald-200 flex flex-col items-center justify-center text-center">
+                   <div className="text-6xl text-emerald-200 mb-6"><i className="fa-solid fa-user-xmark"></i></div>
+                   <h3 className="text-2xl font-black text-emerald-900 mb-2">현재 배정된 직업이 없습니다</h3>
+                   <p className="font-bold text-emerald-600 mb-8">모집 중인 직업을 확인하고 신청해보세요!</p>
+                   <button onClick={()=>setTab('list')} className="bg-emerald-600 text-white px-8 py-4 rounded-2xl font-black shadow-lg hover:bg-emerald-700 transition-colors">모집 중인 직업 보러가기</button>
+                 </div>
+               )}
+            </div>
+          )}
+
+          {/* 2. 모집 중인 직업 목록 */}
+          {tab === 'list' && (
+            <div className="space-y-6 animate-fade-in">
+              <div className="bg-emerald-50 p-6 rounded-2xl border border-emerald-100 flex items-center justify-between">
+                 <p className="font-bold text-emerald-800">현재 운영 중인 직업을 확인하세요.</p>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                 {jobs.map(j => {
+                   const currCount = usersList.filter(u=>u.jobId === j.id).length;
+                   const isFull = currCount >= j.maxUsers;
+                   return (
+                     <div key={j.id} className={`bg-white p-6 rounded-[2rem] border-2 shadow-md flex flex-col transition-transform hover:-translate-y-1 ${!j.isHiring||isFull?'border-gray-200 opacity-80':'border-emerald-100'}`}>
+                        <div className="flex justify-between items-start mb-2">
+                           <h4 className="font-black text-xl text-emerald-950 pr-2">{j.title}</h4>
+                           <span className="bg-emerald-100 text-emerald-800 text-xs font-black px-2.5 py-1 rounded-lg whitespace-nowrap">{currCount} / {j.maxUsers}명</span>
+                        </div>
+                        <p className="text-sm font-bold text-gray-500 mb-6 flex-1">{j.desc}</p>
+                        <div className="bg-emerald-50 p-4 rounded-xl flex justify-between items-center mb-4">
+                           <span className="text-xs font-black text-emerald-700">주급</span>
+                           <span className="font-black text-emerald-600 text-lg">{formatMoney(j.salary)}</span>
+                        </div>
+                        
+                        {/* 신청 조건에 따른 하단 렌더링 */}
+                        {!j.isHiring ? (
+                          <div className="py-3 text-center text-sm font-black text-gray-400 bg-gray-50 rounded-xl">모집 마감됨</div>
+                        ) : isFull ? (
+                          <div className="py-3 text-center text-sm font-black text-red-400 bg-red-50 rounded-xl">정원이 꽉 찼습니다</div>
+                        ) : j.allowSelfApply ? (
+                          <button onClick={()=>applyJob(j.id)} className="w-full py-3 bg-emerald-600 text-white rounded-xl font-black shadow-md hover:bg-emerald-700 transition-colors">신청하기</button>
+                        ) : (
+                          <div className="py-3 text-center text-xs font-black text-emerald-500 bg-emerald-50 border border-emerald-100 rounded-xl">직업 배정은 담당자가 관리합니다</div>
+                        )}
+                     </div>
+                   )
+                 })}
+              </div>
+            </div>
+          )}
+
+          {/* 3. 직업 템플릿 관리 (관리자) */}
+          {tab === 'mng_jobs' && assets.role === 'admin' && (
+            <div className="space-y-6 animate-fade-in">
+               <button onClick={()=>openJobForm()} className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-4 rounded-2xl font-black shadow-xl transition-transform hover:-translate-y-1"><i className="fa-solid fa-plus mr-2"></i> 새 직업 만들기</button>
+               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                 {jobs.map(j => (
+                   <div key={j.id} className="bg-white p-5 rounded-2xl border-2 border-emerald-100 shadow-sm flex flex-col sm:flex-row justify-between gap-4">
+                     <div>
+                       <div className="flex gap-2 items-center mb-1">
+                         <h4 className="font-black text-emerald-900 text-lg">{j.title}</h4>
+                         {j.isHiring ? <Badge type="positive">모집중</Badge> : <Badge type="neutral">모집정지</Badge>}
+                         {j.allowSelfApply && <Badge type="positive">자율신청</Badge>}
+                       </div>
+                       <p className="text-sm font-bold text-gray-500 mb-2 truncate max-w-sm">{j.desc}</p>
+                       <p className="text-sm font-black text-emerald-600">{formatMoney(j.salary)} / 최대 {j.maxUsers}명</p>
+                     </div>
+                     <div className="flex gap-2 sm:flex-col sm:w-20">
+                       <button onClick={()=>openJobForm(j)} className="flex-1 bg-slate-100 text-slate-700 rounded-xl font-bold py-2 hover:bg-slate-200">수정</button>
+                       <button onClick={()=>deleteJob(j.id)} className="flex-1 bg-red-50 text-red-600 rounded-xl font-bold py-2 hover:bg-red-100">삭제</button>
+                     </div>
+                   </div>
+                 ))}
+               </div>
+            </div>
+          )}
+
+          {/* 4. 학생 직업 배정 및 주급 관리 (관리자) */}
+          {tab === 'mng_users' && assets.role === 'admin' && (
+            <div className="bg-white p-6 rounded-[2.5rem] shadow-xl border-2 border-emerald-100 overflow-hidden animate-fade-in">
+              <div className="overflow-x-auto pb-4">
+                <table className="w-full text-left text-sm">
+                  <thead className="text-emerald-600 font-black border-b-2 border-emerald-50">
+                    <tr>
+                      <th className="p-4">이름</th>
+                      <th className="p-4">현재 직업 (변경 가능)</th>
+                      <th className="p-4 text-center">이번 주 완료일</th>
+                      <th className="p-4 text-right">관리 액션</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-emerald-50">
+                    {usersList.map(u => {
+                      const j = jobs.find(x=>x.id===u.jobId);
+                      const checks = u.jobChecklist || {};
+                      let checkedCount = 0;
+                      weekDays.forEach(d => { if(checks[getYYYYMMDD(d)]) checkedCount++; });
+
+                      return (
+                        <tr key={u.id} className="hover:bg-emerald-50/30 transition-colors">
+                          <td className="p-4 font-black text-emerald-950 text-base">{u.name}</td>
+                          <td className="p-4">
+                            <select className="w-full max-w-[200px] p-2.5 bg-emerald-50 rounded-xl font-bold outline-none border border-transparent focus:border-emerald-300" value={u.jobId||''} onChange={e=>applyJob(e.target.value, u.id)}>
+                              <option value="">(직업 없음)</option>
+                              {jobs.map(job=><option key={job.id} value={job.id}>{job.title}</option>)}
+                            </select>
+                          </td>
+                          <td className="p-4 text-center">
+                            <span className={`px-3 py-1.5 rounded-lg font-black ${checkedCount>=5?'bg-green-100 text-green-700':checkedCount>0?'bg-emerald-100 text-emerald-700':'bg-gray-100 text-gray-400'}`}>
+                              {checkedCount} / 5
+                            </span>
+                          </td>
+                          <td className="p-4 text-right space-x-2">
+                            {u.jobId && <button onClick={()=>{setPayTarget(u); setPayAmt(j?.salary||0); setModal('payJob');}} className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl font-black shadow-sm transition-colors">주급 주기</button>}
+                            {u.jobId && <button onClick={()=>removeJob(u.id)} className="bg-red-50 hover:bg-red-100 text-red-600 px-4 py-2 rounded-xl font-black transition-colors">해제</button>}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+        </div>
+      );
+    }
+
+    // --- [투자(주식) 화면] ---
+    function InvestView({ assets, dbData, db, showAlert, showConfirm }) {
+      const [modal, setModal] = useState(null); 
+      const [selStock, setSelStock] = useState(null);
+      const [qty, setQty] = useState('');
+      const syncRef = useRef({ isPaused: false, isCancelled: false });
+      const [syncState, setSyncState] = useState({ status: 'idle', progress: 0, text: '' });
+      const [showManageModal, setShowManageModal] = useState(false);
+      
+      const [newTck, setNewTck] = useState(''); const [newNm, setNewNm] = useState('');
+      const [newIco, setNewIco] = useState('📈'); const [newVirt, setNewVirt] = useState(false);
+      const [editVirtualModal, setEditVirtualModal] = useState(null);
+      const [newVirtualPrice, setNewVirtualPrice] = useState('');
+
+      const executeBuy = async (e) => {
+        e.preventDefault();
+        const q = parseInt(qty, 10);
+        if(isNaN(q) || q<=0) return showAlert('자연수(주) 단위로만 입력 가능합니다.');
+        const cost = q * selStock.currentPrice;
+        if(assets.cash < cost) return showAlert(`현금이 부족합니다. (필요: ${formatMoney(cost)})`);
+        
+        showConfirm(`${selStock.name} ${q}주를 ${formatMoney(cost)}에 매수할까요?`, async () => {
+          const updates = {};
+          const p = assets.portfolio?.[selStock.id] || { qty:0, totalInvested:0 };
+          const nQty = p.qty + q; const nInv = p.totalInvested + cost;
+          updates[`economy_users/${assets.id}/cash`] = assets.cash - cost;
+          updates[`economy_users/${assets.id}/portfolio/${selStock.id}`] = { qty: nQty, totalInvested: nInv, avgPrice: nInv/nQty };
+          const txRef = db.ref('economy_transactions').push().key;
+          updates[`economy_transactions/${txRef}`] = { id: txRef, userId: assets.id, type: '주식 매수', desc: `${selStock.name} ${q}주 매수`, amount: `-${formatMoney(cost)}`, balance: formatMoney(assets.cash-cost), isPositive: false, timestamp: Date.now() };
+          await db.ref('/').update(updates); setModal(null); setQty(''); showAlert('매수 완료!');
+        });
+      };
+
+      const executeSell = (q) => {
+        const p = assets.portfolio?.[selStock.id];
+        if(!p || p.qty < q) return showAlert('보유 주식이 부족합니다.');
+        const rev = q * selStock.currentPrice;
+        showConfirm(`${q}주를 매도하여 ${formatMoney(rev)}를 받을까요?`, async () => {
+          const updates = {};
+          const nQty = p.qty - q; const nInv = p.totalInvested * (nQty/p.qty);
+          updates[`economy_users/${assets.id}/cash`] = assets.cash + rev;
+          if(nQty <= 0) updates[`economy_users/${assets.id}/portfolio/${selStock.id}`] = null;
+          else updates[`economy_users/${assets.id}/portfolio/${selStock.id}`] = { qty: nQty, totalInvested: nInv, avgPrice: p.avgPrice };
+          const txRef = db.ref('economy_transactions').push().key;
+          updates[`economy_transactions/${txRef}`] = { id: txRef, userId: assets.id, type: '주식 매도', desc: `${selStock.name} ${q}주 매도`, amount: `+${formatMoney(rev)}`, balance: formatMoney(assets.cash+rev), isPositive: true, timestamp: Date.now() };
+          await db.ref('/').update(updates); setModal(null); showAlert('매도 완료!');
+        });
+      };
+
+      const handleAddStock = async (e) => {
+        e.preventDefault();
+        const id = db.ref('economy_stocks').push().key;
+        await db.ref(`economy_stocks/${id}`).set({ id, ticker: newTck, name: newNm, icon: newIco, isVirtual: newVirt, currentPrice: 1000, prevPrice: 1000, lastUpdated: 0 });
+        setNewTck(''); setNewNm(''); setShowManageModal(false); showAlert('종목이 추가되었습니다!');
+      };
+
+      const handleVirtualEditSubmit = async (e) => {
+        e.preventDefault();
+        const np = parseInt(newVirtualPrice, 10);
+        if(isNaN(np) || np < 0) return;
+        await db.ref(`economy_stocks/${editVirtualModal.id}`).update({ prevPrice: editVirtualModal.currentPrice, currentPrice: np, lastUpdated: Date.now() });
+        setEditVirtualModal(null); setNewVirtualPrice(''); showAlert('주가가 조작되었습니다.');
+      };
+
+      const runSync = async () => {
+        setModal('sync'); syncRef.current = { isPaused: false, isCancelled: false };
+        setSyncState({ status: 'running', progress: 0, text: '시트 연결 중...' });
+        
+        if(!dbData.settings.googleSheetUrl) {
+          setSyncState({ status: 'done', progress: 0, text: '설정 탭에서 구글 시트 링크를 먼저 넣어주세요.' }); return;
+        }
+
+        const targetUrl = convertGoogleSheetUrl(dbData.settings.googleSheetUrl);
+
+        try {
+          const res = await fetch(targetUrl);
+          const txt = await res.text();
+          const rows = txt.split('\n').map(r=>r.replace(/\r/g,'').split(','));
+          const updates = {}; const now = Date.now();
+          
+          let updatedCount = 0;
+          for(let i=0; i<dbData.stocks.length; i++) {
+            if(syncRef.current.isCancelled) { setSyncState({ status: 'cancelled', progress: 0, text: '동기화가 취소되었습니다.' }); return; }
+            while(syncRef.current.isPaused) { await new Promise(r=>setTimeout(r, 500)); if(syncRef.current.isCancelled) return; }
+            
+            const st = dbData.stocks[i];
+            if(st.isVirtual) continue;
+            
+            setSyncState({ status: 'running', progress: Math.floor((i/dbData.stocks.length)*100), text: `${i+1}/${dbData.stocks.length} 업데이트 중: ${st.name}` });
+            await new Promise(r=>setTimeout(r, 400)); 
+            
+            const match = rows.find(r=>r[0]&&r[0].replace(/"/g,'').trim()===st.ticker);
+            if(match && match[1]) {
+               const parsedCurrent = parseFloat(match[1].replace(/"/g,''));
+               const parsedPrev = match[2] ? parseFloat(match[2].replace(/"/g,'')) : parsedCurrent;
+               if (!isNaN(parsedCurrent)) {
+                 updates[`economy_stocks/${st.id}/currentPrice`] = applyConversion(parsedCurrent, dbData.settings);
+                 updates[`economy_stocks/${st.id}/prevPrice`] = applyConversion(parsedPrev, dbData.settings);
+                 updates[`economy_stocks/${st.id}/lastUpdated`] = now;
+                 updatedCount++;
+               }
+            }
+          }
+          
+          if(Object.keys(updates).length > 0) {
+            updates[`economy_settings/stockLastUpdated`] = now;
+            await db.ref('/').update(updates);
+          }
+          setSyncState({ status: 'done', progress: 100, text: `${updatedCount}개 종목 업데이트 완료!` });
+          setTimeout(()=>setModal(null), 2000);
+        } catch(e) {
+          setSyncState({ status: 'done', progress: 0, text: `오류 발생: 연결 실패` });
+        }
+      };
+
+      const renderIcon = (iconStr) => iconStr?.startsWith('http') ? <img src={iconStr} className="w-10 h-10 object-cover rounded-full shadow-sm" alt="icon"/> : <span>{iconStr}</span>;
+
+      return (
+        <div className="animate-fade-in space-y-8">
+          <Modal isOpen={modal==='buy'} title="매수 주문" iconStr="fa-solid fa-arrow-trend-up" color="purple" onClose={()=>setModal(null)}>
+            <form onSubmit={executeBuy} className="space-y-6">
+              <p className="font-bold text-center text-lg">{selStock?.name} <span className="text-purple-600">({formatMoney(selStock?.currentPrice)})</span></p>
+              <input type="number" required autoFocus placeholder="매수할 수량 (주)" className="w-full p-4 bg-white border-2 border-purple-200 rounded-xl font-black text-center text-2xl outline-none focus:border-purple-500 shadow-inner" value={qty} onChange={e=>setQty(e.target.value)}/>
+              <button type="submit" className="w-full bg-purple-600 hover:bg-purple-700 text-white p-4 rounded-xl font-black shadow-lg transition-colors">주문 확정 (예상: {formatMoney(parseInt(qty||0)*selStock?.currentPrice)})</button>
+            </form>
+          </Modal>
+
+          <Modal isOpen={modal==='sell'} title="매도 주문" iconStr="fa-solid fa-arrow-trend-down" color="fuchsia" onClose={()=>setModal(null)}>
+            <div className="space-y-4">
+               <p className="font-bold text-center mb-6 text-lg">{selStock?.name} 보유량: {assets.portfolio?.[selStock?.id]?.qty || 0}주</p>
+               <div className="grid grid-cols-2 gap-3">
+                 {[1, 5, 10, 'all'].map(q => {
+                   const actualQ = q === 'all' ? assets.portfolio?.[selStock?.id]?.qty : q;
+                   if(!actualQ) return null;
+                   return <button type="button" key={q} onClick={()=>executeSell(actualQ)} className="p-4 bg-fuchsia-50 hover:bg-fuchsia-600 hover:text-white text-fuchsia-900 font-black rounded-xl border-2 border-fuchsia-200 transition-colors shadow-sm">{q==='all'?'전부':`${q}주`} 팔기</button>
+                 })}
+               </div>
+            </div>
+          </Modal>
+
+          <Modal isOpen={modal==='sync'} title="구글 시트 동기화" iconStr="fa-solid fa-rotate" color="indigo" onClose={syncState.status==='done'||syncState.status==='cancelled'?()=>setModal(null):undefined}>
+             <div className="flex flex-col items-center justify-center py-6 space-y-6">
+                {syncState.status === 'done' ? <i className="fa-solid fa-circle-check text-6xl text-green-500 animate-zoom-in"></i> : <i className={`fa-solid fa-rotate text-6xl text-indigo-400 ${syncState.status==='running'?'fa-spin':''}`}></i>}
+                <h3 className="text-xl font-black text-indigo-900 text-center">{syncState.text}</h3>
+                <div className="w-full bg-indigo-100 rounded-full h-4 overflow-hidden border border-indigo-200 shadow-inner"><div className="bg-gradient-to-r from-indigo-400 to-indigo-600 h-full transition-all duration-300" style={{width:`${syncState.progress}%`}}></div></div>
+                {syncState.status !== 'done' && syncState.status !== 'cancelled' && (
+                  <div className="flex gap-4 w-full mt-4">
+                     <button type="button" onClick={()=>{syncRef.current.isCancelled=true; setSyncState({...syncState, status:'cancelled', text:'취소됨'}); setTimeout(()=>setModal(null), 1500);}} className="flex-1 bg-white border-2 border-red-200 text-red-600 hover:bg-red-50 py-3 rounded-xl font-black transition-colors">취소</button>
+                     <button type="button" onClick={()=>{
+                       const isP = syncRef.current.isPaused;
+                       syncRef.current.isPaused = !isP;
+                       setSyncState({...syncState, status: !isP ? 'paused' : 'running', text: !isP ? '일시중지됨' : '재개됨...'});
+                     }} className={`flex-1 text-white py-3 rounded-xl font-black shadow-md transition-colors ${syncState.status==='paused'?'bg-green-500 hover:bg-green-600':'bg-orange-500 hover:bg-orange-600'}`}>{syncState.status==='paused'?'재개':'일시중지'}</button>
+                  </div>
+                )}
+             </div>
+          </Modal>
+
+          <Modal isOpen={showManageModal} title="주식 종목 관리" iconStr="fa-solid fa-chart-pie" color="indigo" onClose={() => setShowManageModal(false)}>
+            <div className="space-y-6">
+              <ul className="space-y-3 max-h-40 overflow-y-auto pr-2 scrollbar-hide">
+                {dbData.stocks.map(s => (
+                  <li key={s.id} className="flex justify-between bg-slate-50 p-3 rounded-xl font-bold items-center border border-slate-200 shadow-sm">
+                    <span className="flex items-center gap-2">{renderIcon(s.icon)} {s.name} <span className="text-xs text-slate-400">({s.ticker})</span></span>
+                    <button type="button" onClick={()=>showConfirm('상장 폐지하시겠습니까?', async ()=>{ await db.ref(`economy_stocks/${s.id}`).remove(); showAlert('삭제 완료'); })} className="text-red-500 hover:bg-red-100 w-8 h-8 rounded-lg flex items-center justify-center transition-colors"><i className="fa-solid fa-trash"></i></button>
+                  </li>
+                ))}
+              </ul>
+              <form onSubmit={handleAddStock} className="bg-indigo-50 p-5 rounded-2xl border-2 border-indigo-100 space-y-4">
+                 <h4 className="font-black text-indigo-900">새 종목 상장</h4>
+                 <input type="text" required placeholder="종목명 (예: 애플)" className="w-full bg-white border border-indigo-200 rounded-xl px-4 py-3 font-bold outline-none focus:border-indigo-400" value={newNm} onChange={e=>setNewNm(e.target.value)} />
+                 <input type="text" required placeholder="구글 시트 A열에 적은 티커 기호" className="w-full bg-white border border-indigo-200 rounded-xl px-4 py-3 font-bold outline-none focus:border-indigo-400" value={newTck} onChange={e=>setNewTck(e.target.value)} />
+                 <input type="text" required placeholder="아이콘 이모지 또는 이미지 URL" className="w-full bg-white border border-indigo-200 rounded-xl px-4 py-3 font-bold outline-none focus:border-indigo-400" value={newIco} onChange={e=>setNewIco(e.target.value)} />
+                 <label className="flex items-center gap-2 font-bold text-indigo-900 cursor-pointer px-1">
+                   <input type="checkbox" checked={newVirt} onChange={e=>setNewVirt(e.target.checked)} className="w-5 h-5 accent-indigo-600" /> API 연동 없는 수동 조작용 '가상 주식'
+                 </label>
+                 <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-black py-4 rounded-xl shadow-lg transition-colors">상장하기</button>
+              </form>
+            </div>
+          </Modal>
+
+          <Modal isOpen={!!editVirtualModal} title="가상 주식 조작" iconStr="fa-solid fa-pen" color="indigo" onClose={() => setEditVirtualModal(null)}>
+            <form onSubmit={handleVirtualEditSubmit} className="space-y-6">
+              <p className="font-bold text-indigo-900 text-center">[{editVirtualModal?.name}]의 현재 주가는 {formatMoney(editVirtualModal?.currentPrice)} 입니다.</p>
+              <input type="number" required autoFocus placeholder="새로운 주가 입력" className="w-full bg-white border-2 border-indigo-200 rounded-2xl px-5 py-4 outline-none font-bold text-center text-xl shadow-inner" value={newVirtualPrice} onChange={(e) => setNewVirtualPrice(e.target.value)} />
+              <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-extrabold shadow-lg transition-colors">주가 반영하기</button>
+            </form>
+          </Modal>
+
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-8 rounded-[2.5rem] shadow-xl border-2 border-indigo-100">
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-black flex items-center gap-3"><div className="bg-indigo-100 p-2 rounded-xl"><i className="fa-solid fa-chart-line text-indigo-600"></i></div> 증권 거래소</h1>
+              <p className="text-indigo-500 font-bold mt-2 text-sm sm:text-base">제공: {dbData.settings.providerText || 'Google Finance'}</p>
+              <p className="text-xs font-bold text-gray-400 mt-1">최근 업데이트: {dbData.settings.stockLastUpdated ? formatDate(dbData.settings.stockLastUpdated) : '없음'}</p>
+            </div>
+            {assets.role === 'admin' && (
+              <div className="flex gap-2">
+                <button onClick={runSync} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-4 rounded-2xl font-black flex items-center gap-2 shadow-lg transition-transform hover:-translate-y-1"><i className="fa-solid fa-rotate"></i> 수동 동기화</button>
+                <button onClick={() => setShowManageModal(true)} className="bg-slate-800 hover:bg-slate-900 text-white px-5 py-4 rounded-2xl font-black shadow-lg transition-transform hover:-translate-y-1"><i className="fa-solid fa-plus"></i></button>
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {dbData.stocks.map(st => {
+              const p = assets.portfolio?.[st.id];
+              const diff = st.currentPrice - st.prevPrice;
+              const isUp = diff>0; const isDn = diff<0;
+              const cColor = isUp ? 'text-red-500' : isDn ? 'text-blue-500' : 'text-slate-500';
+              const pVal = p ? Math.floor(p.qty * st.currentPrice) : 0;
+              const ret = p ? pVal - p.totalInvested : 0;
+              
+              return (
+                <div key={st.id} className="bg-white rounded-3xl border-2 border-indigo-50 shadow-md p-6 flex flex-col hover:-translate-y-1 transition-transform">
+                   <div className="flex justify-between items-start mb-6">
+                     <div className="flex gap-3 items-center"><div className="text-3xl bg-indigo-50 w-14 h-14 flex items-center justify-center rounded-2xl border border-indigo-100">{renderIcon(st.icon)}</div><div><h4 className="font-black text-lg text-indigo-950">{st.name} {st.isVirtual&&<Badge type="neutral">가상</Badge>}</h4><p className="text-xs font-bold text-gray-400">{st.ticker}</p></div></div>
+                     <div className="text-right"><div className={`text-2xl font-black tracking-tighter ${cColor}`}>{formatMoney(st.currentPrice)}</div><div className={`text-sm font-bold ${cColor}`}>{isUp?'▲':isDn?'▼':'-'} {Math.abs(diff)}</div></div>
+                   </div>
+                   <div className="bg-indigo-50/50 p-4 rounded-2xl text-sm font-bold space-y-2 mb-6 border border-indigo-50">
+                     <div className="flex justify-between"><span className="text-indigo-400">보유 수량</span><span className="text-indigo-900">{p?.qty||0} 주</span></div>
+                     <div className="flex justify-between"><span className="text-indigo-400">매수 평균가</span><span className="text-indigo-900">{formatMoney(p?.avgPrice)}</span></div>
+                     <div className="flex justify-between pt-2 border-t border-indigo-100/50"><span className="text-indigo-400">평가 금액</span><span className={`font-black ${ret>0?'text-red-500':ret<0?'text-blue-500':''}`}>{formatMoney(pVal)} ({ret>0?'+':''}{formatMoney(ret)})</span></div>
+                   </div>
+                   {assets.role !== 'admin' ? (
+                     <div className="flex gap-2 mt-auto">
+                       <button onClick={()=>{setSelStock(st); setModal('buy');}} className="flex-1 bg-red-50 text-red-600 font-black py-3 rounded-xl border-2 border-red-100 hover:bg-red-500 hover:text-white transition-colors">매수</button>
+                       <button onClick={()=>{setSelStock(st); setModal('sell');}} disabled={!p||p.qty<=0} className="flex-1 bg-blue-50 text-blue-600 font-black py-3 rounded-xl border-2 border-blue-100 hover:bg-blue-500 hover:text-white transition-colors disabled:opacity-50">매도</button>
+                     </div>
+                   ) : st.isVirtual && (
+                     <button onClick={()=>{ setEditVirtualModal(st); setNewVirtualPrice(st.currentPrice); }} className="mt-auto w-full bg-slate-800 text-white py-3 rounded-xl font-black hover:bg-slate-900 transition-colors">주가 수동 조작</button>
+                   )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    // --- [은행 화면] --- 
+    function BankView({ assets, dbData, db, showAlert, showConfirm }) {
+      const [modal, setModal] = useState(null);
+      const [bName, setBName] = useState(''); const [bAmt, setBAmt] = useState(''); const [bSel, setBSel] = useState('');
+      
+      const [editProd, setEditProd] = useState(null);
+      const [nNm, setNNm] = useState(''); const [nDay, setNDay] = useState(''); 
+      const [nHr, setNHr] = useState(''); const [nMin, setNMin] = useState(''); const [nSec, setNSec] = useState('');
+      const [nRat, setNRate] = useState('');
+
+      const deposits = Object.values(dbData.deposits).filter(d=>d.userId===assets.id);
+
+      const createDep = async (e) => {
+        e.preventDefault();
+        const a = parseInt(bAmt, 10);
+        if(!bSel || !bName || isNaN(a) || a<=0) return showAlert('올바른 값을 입력해주세요.');
+        if(a > assets.cash) return showAlert('현금이 부족합니다.');
+        const prod = dbData.bank.find(p=>p.id===bSel);
+        
+        const m = new Date();
+        m.setDate(m.getDate()+(prod.days||0)); m.setHours(m.getHours()+(prod.hours||0)); m.setMinutes(m.getMinutes()+(prod.minutes||0)); m.setSeconds(m.getSeconds()+(prod.seconds||0));
+        
+        const updates = {};
+        updates[`economy_users/${assets.id}/cash`] = assets.cash-a;
+        updates[`economy_users/${assets.id}/deposit`] = assets.deposit+a;
+        const dRef = db.ref('economy_deposits').push().key;
+        updates[`economy_deposits/${dRef}`] = { id: dRef, userId: assets.id, name: bName, productName: prod.name, principal: a, rate: prod.rate, maturityDate: m.toISOString(), createdAt: Date.now() };
+        const tRef = db.ref('economy_transactions').push().key;
+        updates[`economy_transactions/${tRef}`] = { id: tRef, userId: assets.id, type: '예금 가입', desc: bName, amount: `-${formatMoney(a)}`, balance: formatMoney(assets.cash-a), isPositive: false, timestamp: Date.now() };
+        await db.ref('/').update(updates); setModal(null); setBName(''); setBAmt(''); showAlert('예금 생성 완료!');
+      };
+
+      const processDep = (d, isM) => {
+        const ret = isM ? Math.floor(d.principal * (1+d.rate)) : d.principal;
+        showConfirm(isM?`만기 이자 포함 ${formatMoney(ret)} 수령할까요?`:'중도해지 시 이자는 포기됩니다. 진행할까요?', async () => {
+          const updates = {};
+          updates[`economy_deposits/${d.id}`] = null;
+          updates[`economy_users/${assets.id}/cash`] = assets.cash+ret;
+          updates[`economy_users/${assets.id}/deposit`] = assets.deposit-d.principal;
+          const tRef = db.ref('economy_transactions').push().key;
+          updates[`economy_transactions/${tRef}`] = { id: tRef, userId: assets.id, type: isM?'만기 수령':'중도 해지', desc: d.name, amount: `+${formatMoney(ret)}`, balance: formatMoney(assets.cash+ret), isPositive: true, timestamp: Date.now() };
+          await db.ref('/').update(updates); showAlert('처리 완료!');
+        });
+      };
+
+      const openEditForm = (p = null) => {
+        if(p) {
+          setEditProd(p); setNNm(p.name); setNDay(p.days||0); setNHr(p.hours||0); setNMin(p.minutes||0); setNSec(p.seconds||0); setNRate(p.rate*100);
+        } else {
+          setEditProd(null); setNNm(''); setNDay(0); setNHr(0); setNMin(0); setNSec(0); setNRate('');
+        }
+        setModal('editProd');
+      }
+
+      const handleSaveProd = async (e) => {
+        e.preventDefault();
+        const id = editProd ? editProd.id : db.ref('economy_bank_products').push().key;
+        await db.ref(`economy_bank_products/${id}`).set({ 
+          id, name: nNm, days: parseInt(nDay,10)||0, hours: parseInt(nHr,10)||0, minutes: parseInt(nMin,10)||0, seconds: parseInt(nSec,10)||0,
+          rate: parseFloat(nRat)/100, rateText: `${parseFloat(nRat)}%` 
+        });
+        setModal(null); setEditProd(null); showAlert('상품이 저장되었습니다.');
+      };
+
+      return (
+        <div className="animate-fade-in space-y-8">
+          <Modal isOpen={modal==='new'} title="새 예금 가입" iconStr="fa-solid fa-piggy-bank" color="purple" onClose={()=>setModal(null)}>
+            <form onSubmit={createDep} className="space-y-6">
+              <CustomDropdown options={dbData.bank.map(p=>({value:p.id, label:`${p.name} (${p.rateText})`}))} value={bSel} onChange={setBSel} placeholder="가입할 예금 상품을 선택하세요" />
+              <input type="text" required autoFocus placeholder="내 예금 통장 이름 (예: 자동차 사기)" className="w-full p-4 bg-white border-2 border-purple-200 rounded-xl font-bold outline-none focus:border-purple-500" value={bName} onChange={e=>setBName(e.target.value)}/>
+              <input type="number" required placeholder={`가입할 금액 (보유: ${formatMoney(assets.cash)})`} className="w-full p-4 bg-white border-2 border-purple-200 rounded-xl font-bold outline-none focus:border-purple-500 shadow-inner" value={bAmt} onChange={e=>setBAmt(e.target.value)}/>
+              <button type="submit" className="w-full bg-purple-600 hover:bg-purple-700 text-white p-4 rounded-xl font-black shadow-lg transition-colors">가입 확정</button>
+            </form>
+          </Modal>
+
+          <Modal isOpen={modal==='mng'} title="은행 상품 관리" iconStr="fa-solid fa-building-columns" color="indigo" onClose={()=>setModal(null)}>
+            <div className="space-y-4">
+              <button onClick={()=>openEditForm()} className="w-full bg-indigo-600 text-white py-4 rounded-xl font-black shadow-md hover:-translate-y-1 transition-transform mb-2"><i className="fa-solid fa-plus mr-2"></i>새 예금 상품 등록</button>
+              {dbData.bank.map(p => (
+                <div key={p.id} className="flex justify-between bg-white p-5 rounded-2xl font-bold items-center border-2 border-indigo-50 shadow-sm">
+                  <div className="text-indigo-900">{p.name} <span className="text-xs text-indigo-500 block mt-1">{p.days}일 {p.hours}시간 {p.minutes}분 {p.seconds}초 / {p.rateText}</span></div>
+                  <div className="flex gap-2">
+                    <button onClick={()=>openEditForm(p)} className="bg-slate-100 text-slate-700 hover:bg-slate-200 p-2.5 rounded-lg transition-colors"><i className="fa-solid fa-pen"></i></button>
+                    <button onClick={()=>showConfirm('삭제하시겠습니까?', async ()=>{ await db.ref(`economy_bank_products/${p.id}`).remove(); showAlert('삭제됨'); })} className="bg-red-50 text-red-500 hover:bg-red-500 hover:text-white p-2.5 rounded-lg transition-colors"><i className="fa-solid fa-trash"></i></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Modal>
+
+          <Modal isOpen={modal==='editProd'} title={editProd ? '상품 수정' : '새 예금 상품 등록'} color="indigo" onClose={()=>{setModal('mng'); setEditProd(null);}}>
+            <form onSubmit={handleSaveProd} className="space-y-4">
+              <input required autoFocus placeholder="상품명 (예: 단기 적금)" className="w-full p-4 bg-white border-2 border-indigo-100 rounded-xl font-bold outline-none" value={nNm} onChange={e=>setNNm(e.target.value)} />
+              <div className="grid grid-cols-2 gap-3 bg-indigo-50 p-4 rounded-2xl border border-indigo-100">
+                <div className="flex items-center gap-2 text-sm font-bold text-indigo-800"><input type="number" className="w-full p-3 rounded-lg outline-none border border-indigo-200 text-center" value={nDay} onChange={e=>setNDay(e.target.value)} />일</div>
+                <div className="flex items-center gap-2 text-sm font-bold text-indigo-800"><input type="number" className="w-full p-3 rounded-lg outline-none border border-indigo-200 text-center" value={nHr} onChange={e=>setNHr(e.target.value)} />시</div>
+                <div className="flex items-center gap-2 text-sm font-bold text-indigo-800"><input type="number" className="w-full p-3 rounded-lg outline-none border border-indigo-200 text-center" value={nMin} onChange={e=>setNMin(e.target.value)} />분</div>
+                <div className="flex items-center gap-2 text-sm font-bold text-indigo-800"><input type="number" className="w-full p-3 rounded-lg outline-none border border-indigo-200 text-center" value={nSec} onChange={e=>setNSec(e.target.value)} />초</div>
+              </div>
+              <input type="number" step="0.1" required placeholder="이자율 (%)" className="w-full p-4 bg-white border-2 border-indigo-100 rounded-xl font-bold outline-none" value={nRat} onChange={e=>setNRate(e.target.value)} />
+              <button type="submit" className="w-full bg-indigo-600 text-white p-4 rounded-xl font-black shadow-lg">저장하기</button>
+            </form>
+          </Modal>
+
+          <div className="flex justify-between items-center bg-white p-8 rounded-[2.5rem] shadow-xl border-2 border-purple-100">
+            <h1 className="text-3xl font-black flex items-center gap-4"><div className="bg-purple-100 p-3 rounded-2xl"><i className="fa-solid fa-building-columns text-purple-600"></i></div> HH 은행</h1>
+            {assets.role === 'admin' ? (
+               <button onClick={()=>setModal('mng')} className="bg-purple-900 text-white px-6 py-4 rounded-2xl font-black shadow-lg hover:-translate-y-1 transition-transform">예금 상품 관리</button>
+            ) : (
+               <button onClick={()=>setModal('new')} className="bg-purple-600 text-white px-6 py-4 rounded-2xl font-black shadow-lg hover:-translate-y-1 transition-transform">예금 가입</button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {deposits.map(d => {
+              const isM = Date.now() >= new Date(d.maturityDate).getTime();
+              return (
+                <div key={d.id} className={`bg-white p-6 rounded-3xl border-4 ${isM?'border-purple-400 shadow-xl':'border-purple-50 shadow-sm'} flex flex-col transition-all hover:-translate-y-1`}>
+                  <h4 className="text-xl font-black mb-4 text-purple-950">{d.name}</h4>
+                  <div className="bg-purple-50 p-4 rounded-2xl text-sm font-bold space-y-3 mb-6">
+                     <div className="flex justify-between border-b border-purple-100 pb-2"><span className="text-purple-400">원금</span><span className="text-purple-900">{formatMoney(d.principal)}</span></div>
+                     <div className="flex justify-between border-b border-purple-100 pb-2"><span className="text-purple-400">이자율</span><span className="text-purple-900">{d.rate*100}%</span></div>
+                     <div className="flex justify-between"><span className="text-purple-400">만기일</span><span className="text-purple-900">{formatDate(d.maturityDate)}</span></div>
+                  </div>
+                  {assets.role !== 'admin' && <button onClick={()=>processDep(d, isM)} className={`w-full py-4 font-black rounded-xl transition-colors ${isM?'bg-purple-600 text-white shadow-md hover:bg-purple-700':'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>{isM?'만기 수령 (이자 포함)':'중도 해지 (원금만)'}</button>}
+                </div>
+              )
+            })}
+            {deposits.length === 0 && <div className="col-span-full py-16 bg-white rounded-3xl border-2 border-dashed border-purple-100 text-center font-bold text-purple-300 text-lg">가입된 예금이 없습니다.</div>}
+          </div>
+        </div>
+      );
+    }
+
+    // --- [상점 및 보관함 화면] ---
+    function StoreView({ assets, dbData, db, showAlert, showConfirm }) {
+      const [tab, setTab] = useState('store');
+      const [modal, setModal] = useState(null); 
+      const [pId, setPId] = useState(''); const [pNm, setPNm] = useState(''); const [pIco, setPIco] = useState(''); const [pPri, setPPri] = useState(''); const [pStk, setPStk] = useState(''); const [pDesc, setPDesc] = useState(''); const [pRef, setPRef] = useState(true); const [pRefHr, setPRefHr] = useState(24); const [pPause, setPPause] = useState(false); const [pAllowU, setPAllowU] = useState(true);
+      
+      const [now, setNow] = useState(Date.now());
+      useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, []);
+
+      const myInv = dbData.inventory.filter(i=>i.userId===assets.id);
+      const allInv = dbData.inventory;
+
+      const buy = async (p) => {
+        if(p.stock<=0 || p.isPaused) return;
+        if(assets.cash < p.price) return showAlert('현금이 부족합니다.');
+        showConfirm(`'${p.name}' 환불 ${p.refundable?`${p.refundLimitHours}시간 내 가능`:'불가'} 상품입니다.\n구매할까요?`, async () => {
+          const updates = {};
+          updates[`economy_users/${assets.id}/cash`] = assets.cash - p.price;
+          updates[`economy_store_products/${p.id}/stock`] = p.stock - 1;
+          const iId = db.ref('economy_inventory').push().key;
+          updates[`economy_inventory/${iId}`] = { id: iId, userId: assets.id, productId: p.id, productName: p.name, icon: p.icon, price: p.price, purchasedAt: Date.now(), isRefundable: p.refundable, refundLimitHours: p.refundLimitHours, status: 'active' };
+          const tId = db.ref('economy_transactions').push().key;
+          updates[`economy_transactions/${tId}`] = { id: tId, userId: assets.id, type: '상점 구매', desc: p.name, amount: `-${formatMoney(p.price)}`, balance: formatMoney(assets.cash-p.price), isPositive: false, timestamp: Date.now() };
+          await db.ref('/').update(updates); showAlert('구매 완료!');
+        });
+      };
+
+      const useItem = async (item, force = false) => {
+        const prod = dbData.store.find(p=>p.id===item.productId);
+        if(!force && prod && prod.isPaused && !prod.allowUseIfPaused) return showAlert('현재 사용이 제한된 상품입니다.');
+        showConfirm(force?'강제로 사용 처리합니까?':'사용하시겠습니까?\n(사용 후에는 내역에 회색으로 남습니다)', async () => {
+          const updates = {};
+          updates[`economy_inventory/${item.id}/status`] = 'used';
+          updates[`economy_inventory/${item.id}/usedAt`] = Date.now();
+          const tId = db.ref('economy_transactions').push().key;
+          updates[`economy_transactions/${tId}`] = { id: tId, userId: item.userId, type: '아이템 사용', desc: `${item.productName} 1개 사용`, amount: '0G', balance: formatMoney(dbData.users[item.userId].cash), isPositive: false, timestamp: Date.now() };
+          await db.ref('/').update(updates); showAlert('사용 완료!');
+        });
+      };
+
+      const refundItem = async (item, force = false) => {
+        if(!force && !item.isRefundable) return showAlert('환불 불가 상품입니다.');
+        if(!force && (Date.now()-item.purchasedAt)/3600000 > item.refundLimitHours) return showAlert('환불 기한이 지났습니다.');
+        showConfirm(force?'강제로 환불시킵니까?':`${formatMoney(item.price)} 환불받을까요?`, async () => {
+          const updates = {};
+          const u = dbData.users[item.userId];
+          updates[`economy_inventory/${item.id}`] = null;
+          updates[`economy_users/${u.id}/cash`] = u.cash + item.price;
+          const prod = dbData.store.find(p=>p.id===item.productId);
+          if(prod) updates[`economy_store_products/${prod.id}/stock`] = prod.stock + 1;
+          const tId = db.ref('economy_transactions').push().key;
+          updates[`economy_transactions/${tId}`] = { id: tId, userId: u.id, type: '아이템 환불', desc: item.productName, amount: `+${formatMoney(item.price)}`, balance: formatMoney(u.cash+item.price), isPositive: true, timestamp: Date.now() };
+          await db.ref('/').update(updates); showAlert('환불 완료!');
+        });
+      };
+
+      const donateItem = async (item) => {
+        showConfirm('기부 센터 나눔 장터로 이 아이템을 기부할까요?\n(기부 시 내 보관함에서는 사라집니다)', async () => {
+          const updates = {};
+          updates[`economy_inventory/${item.id}`] = null;
+          const dId = db.ref('economy_item_donations').push().key;
+          updates[`economy_item_donations/${dId}`] = { id: dId, originalUserId: assets.id, donorName: assets.name, productId: item.productId, productName: item.productName, icon: item.icon, price: item.price, donatedAt: Date.now() };
+          const tId = db.ref('economy_transactions').push().key;
+          updates[`economy_transactions/${tId}`] = { id: tId, userId: assets.id, type: '아이템 기부', desc: `나눔장터 기부: ${item.productName}`, amount: '0G', balance: formatMoney(assets.cash), isPositive: false, timestamp: Date.now() };
+          await db.ref('/').update(updates); showAlert('나눔 장터에 기부되었습니다! 감사합니다.');
+        });
+      };
+
+      const saveProd = async (e) => {
+        e.preventDefault();
+        const id = pId || db.ref('economy_store_products').push().key;
+        await db.ref(`economy_store_products/${id}`).set({
+          id, name: pNm, icon: pIco||'🎁', price: parseInt(pPri,10), stock: parseInt(pStk,10), desc: pDesc, refundable: pRef, refundLimitHours: parseInt(pRefHr,10)||0, isPaused: pPause, allowUseIfPaused: pAllowU
+        });
+        setModal(null); showAlert('저장 완료!');
+      };
+
+      const openForm = (p=null) => {
+        if(p) { setPId(p.id); setPNm(p.name); setPIco(p.icon); setPPri(p.price); setPStk(p.stock); setPDesc(p.desc); setPRef(p.refundable); setPRefHr(p.refundLimitHours); setPPause(p.isPaused||false); setPAllowU(p.allowUseIfPaused??true); }
+        else { setPId(''); setPNm(''); setPIco('🎁'); setPPri(''); setPStk('99'); setPDesc(''); setPRef(true); setPRefHr(24); setPPause(false); setPAllowU(true); }
+        setModal('editProd');
+      };
+
+      const renderIcon = (iconStr) => {
+        if(iconStr?.startsWith('http')) return <img src={iconStr} className="w-14 h-14 object-cover rounded-2xl shadow-sm mx-auto border border-fuchsia-100" alt="icon"/>;
+        return <div className="text-5xl">{iconStr}</div>;
+      };
+
+      const formatTimeLeft = (ms) => {
+        if(ms <= 0) return '기한 만료';
+        const d = Math.floor(ms / 86400000);
+        const h = Math.floor((ms % 86400000) / 3600000);
+        const m = Math.floor((ms % 3600000) / 60000);
+        const s = Math.floor((ms % 60000) / 1000);
+        return `${d}일 ${String(h).padStart(2,'0')}시간 ${String(m).padStart(2,'0')}분 ${String(s).padStart(2,'0')}초`;
+      };
+
+      return (
+        <div className="animate-fade-in space-y-8">
+          <Modal isOpen={modal==='editProd'} title={pId?'상품 수정':'새 상점 아이템 등록'} iconStr="fa-solid fa-store" color="fuchsia" onClose={()=>setModal(null)}>
+            <form onSubmit={saveProd} className="space-y-4">
+              <input required autoFocus placeholder="상품명" className="w-full p-4 bg-white border-2 border-fuchsia-100 rounded-xl font-bold outline-none focus:border-fuchsia-400" value={pNm} onChange={e=>setPNm(e.target.value)}/>
+              <input placeholder="아이콘 (이모지 또는 사진 URL)" className="w-full p-4 bg-white border-2 border-fuchsia-100 rounded-xl font-bold outline-none focus:border-fuchsia-400" value={pIco} onChange={e=>setPIco(e.target.value)}/>
+              <div className="flex gap-2">
+                <input required type="number" placeholder="가격(G)" className="w-full p-4 bg-white border-2 border-fuchsia-100 rounded-xl font-bold outline-none focus:border-fuchsia-400" value={pPri} onChange={e=>setPPri(e.target.value)}/>
+                <input required type="number" placeholder="초기 재고" className="w-full p-4 bg-white border-2 border-fuchsia-100 rounded-xl font-bold outline-none focus:border-fuchsia-400" value={pStk} onChange={e=>setPStk(e.target.value)}/>
+              </div>
+              <input placeholder="상품 설명" className="w-full p-4 bg-white border-2 border-fuchsia-100 rounded-xl font-bold outline-none focus:border-fuchsia-400" value={pDesc} onChange={e=>setPDesc(e.target.value)}/>
+              
+              <div className="bg-fuchsia-50 p-5 rounded-2xl space-y-4 border border-fuchsia-100">
+                 <label className="flex items-center gap-3 font-bold cursor-pointer text-fuchsia-900">
+                   <input type="checkbox" checked={pRef} onChange={e=>setPRef(e.target.checked)} className="w-5 h-5 accent-fuchsia-600"/> 환불 가능 여부 
+                   (시간 설정: <input type="number" className="w-16 px-2 py-1 rounded-lg outline-none border border-fuchsia-200 mx-1 text-center" value={pRefHr} onChange={e=>setPRefHr(e.target.value)}/> 시간)
+                 </label>
+                 <div className="border-t border-fuchsia-200 pt-4 space-y-3">
+                   <label className="flex items-center gap-3 font-bold text-rose-600 cursor-pointer">
+                     <input type="checkbox" checked={pPause} onChange={e=>setPPause(e.target.checked)} className="w-5 h-5 accent-rose-600"/> 이 상품 신규 판매 임시 중지 (품절 처리)
+                   </label>
+                   {pPause && (
+                     <label className="flex items-center gap-3 font-bold text-fuchsia-700 pl-8 cursor-pointer">
+                       <input type="checkbox" checked={pAllowU} onChange={e=>setPAllowU(e.target.checked)} className="w-5 h-5 accent-fuchsia-600"/> 기존 구매자는 사용 가능하게 허용
+                     </label>
+                   )}
+                 </div>
+              </div>
+              <button type="submit" className="w-full bg-fuchsia-600 hover:bg-fuchsia-700 text-white py-4 rounded-xl font-black shadow-lg transition-colors">저장하기</button>
+            </form>
+          </Modal>
+
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-8 rounded-[2.5rem] shadow-xl border-2 border-fuchsia-100">
+            <h1 className="text-3xl font-black flex items-center gap-4"><div className="bg-fuchsia-100 p-3 rounded-2xl"><i className="fa-solid fa-store text-fuchsia-600"></i></div> 상점 & 인벤토리</h1>
+            <div className="flex bg-fuchsia-50 p-2 rounded-2xl border-2 border-fuchsia-100 overflow-x-auto w-full sm:w-auto scrollbar-hide">
+              <button onClick={()=>setTab('store')} className={`whitespace-nowrap px-6 py-3 font-extrabold rounded-xl transition-all ${tab==='store'?'bg-white text-fuchsia-900 shadow-md':'text-fuchsia-500 hover:text-fuchsia-700'}`}>상점 구경</button>
+              {assets.role!=='admin'&&<button onClick={()=>setTab('inv')} className={`whitespace-nowrap px-6 py-3 font-extrabold rounded-xl transition-all ${tab==='inv'?'bg-white text-fuchsia-900 shadow-md':'text-fuchsia-500 hover:text-fuchsia-700'}`}>내 보관함 ({myInv.length})</button>}
+              {assets.role==='admin'&&<button onClick={()=>setTab('mng')} className={`whitespace-nowrap px-6 py-3 font-extrabold rounded-xl transition-all ${tab==='mng'?'bg-white text-fuchsia-900 shadow-md':'text-fuchsia-500 hover:text-fuchsia-700'}`}>상품 관리</button>}
+              {assets.role==='admin'&&<button onClick={()=>setTab('allinv')} className={`whitespace-nowrap px-6 py-3 font-extrabold rounded-xl transition-all ${tab==='allinv'?'bg-white text-fuchsia-900 shadow-md':'text-fuchsia-500 hover:text-fuchsia-700'}`}>학생 보관함 검사</button>}
+            </div>
+          </div>
+
+          {tab === 'store' && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {dbData.store.map(p => (
+                <div key={p.id} className={`bg-white p-6 rounded-[2rem] border-4 ${p.isPaused||p.stock<=0?'border-gray-200 grayscale opacity-70':'border-fuchsia-50 shadow-xl hover:-translate-y-2'} flex flex-col text-center transition-all relative`}>
+                  {p.isPaused && <div className="absolute top-4 left-4 bg-gray-800 text-white text-xs font-black px-2 py-1 rounded-lg">판매중지</div>}
+                  <div className="mb-4 flex items-center justify-center h-20">{renderIcon(p.icon)}</div>
+                  <h4 className="font-black text-xl mb-2 text-fuchsia-950">{p.name}</h4>
+                  <p className="text-xs font-bold text-gray-500 mb-4 h-10 overflow-hidden">{p.desc}</p>
+                  <p className="font-black text-fuchsia-600 text-2xl mb-4 tracking-tight">{formatMoney(p.price)} <span className="text-xs text-gray-400 block mt-1">남은 수량: {p.stock}개</span></p>
+                  {!p.refundable && <span className="text-[11px] bg-red-100 text-red-600 font-black px-2 py-1 rounded-lg mb-3 mx-auto shadow-sm">환불불가 상품</span>}
+                  {assets.role!=='admin' && <button onClick={()=>buy(p)} disabled={p.stock<=0||p.isPaused} className="mt-auto w-full bg-fuchsia-600 text-white py-4 rounded-xl font-black shadow-md disabled:bg-gray-300 disabled:shadow-none hover:bg-fuchsia-700 transition-colors">{p.isPaused?'판매 중지':p.stock<=0?'품절':'구매하기'}</button>}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {tab === 'inv' && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+              {myInv.map(i => {
+                const p = dbData.store.find(x=>x.id===i.productId);
+                const isUsed = i.status === 'used';
+                const canUse = !isUsed && (!p?.isPaused || p?.allowUseIfPaused);
+                const refundMs = i.purchasedAt + (i.refundLimitHours * 3600000) - now;
+                const canRefund = i.isRefundable && refundMs > 0 && !isUsed;
+
+                return (
+                  <div key={i.id} className={`bg-white p-6 rounded-[2rem] border-4 ${isUsed?'border-gray-200 grayscale opacity-60':'border-fuchsia-100 shadow-lg'} flex flex-col transition-all`}>
+                    <div className="flex items-center gap-4 mb-4"><div className="bg-fuchsia-50 w-16 h-16 flex items-center justify-center rounded-2xl border border-fuchsia-100">{renderIcon(i.icon)}</div><div className="font-black text-xl text-fuchsia-950 leading-tight">{i.productName}</div></div>
+                    <div className="bg-fuchsia-50/50 p-4 rounded-2xl mb-4 space-y-2 border border-fuchsia-50">
+                      <div className="text-xs font-bold text-gray-500 flex justify-between"><span>구매가</span><span className="text-fuchsia-900">{formatMoney(i.price)}</span></div>
+                      <div className="text-xs font-bold text-gray-500 flex justify-between"><span>{isUsed?'사용일':'구매일'}</span><span className="text-fuchsia-900">{formatDate(isUsed?i.usedAt:i.purchasedAt)}</span></div>
+                    </div>
+                    {!isUsed ? (
+                      <div className="mt-auto space-y-3">
+                        {canRefund ? <div className="text-[11px] font-black text-rose-500 bg-rose-50 py-2 rounded-lg text-center border border-rose-100 animate-pulse">환불 기한: {formatTimeLeft(refundMs)}</div> : (i.isRefundable ? <div className="text-[11px] font-black text-gray-400 text-center py-2 bg-gray-50 rounded-lg">환불 기한이 지났습니다</div> : null)}
+                        <div className="grid grid-cols-3 gap-2">
+                          <button onClick={()=>useItem(i)} disabled={!canUse} className="bg-fuchsia-600 text-white py-3 rounded-xl font-black disabled:bg-gray-400 shadow-md transition-transform hover:-translate-y-1 hover:bg-fuchsia-700">사용</button>
+                          <button onClick={()=>donateItem(i)} className="bg-rose-50 text-rose-600 border border-rose-200 py-3 rounded-xl font-black hover:bg-rose-100 transition-colors">기부</button>
+                          <button onClick={()=>refundItem(i)} disabled={!canRefund} className="bg-white border border-gray-200 text-gray-600 py-3 rounded-xl font-black disabled:opacity-50 hover:bg-gray-50 transition-colors">환불</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mt-auto py-4 text-center font-black text-gray-500 bg-gray-100 rounded-xl shadow-inner border border-gray-200">사용 완료된 아이템</div>
+                    )}
+                  </div>
+                );
+              })}
+              {myInv.length === 0 && <div className="col-span-full py-24 text-center font-bold text-fuchsia-300 text-xl border-2 border-dashed border-fuchsia-100 rounded-[2.5rem] bg-white">보관함이 텅 비어있습니다.</div>}
+            </div>
+          )}
+
+          {tab === 'mng' && assets.role==='admin' && (
+             <div className="space-y-6">
+               <button onClick={()=>openForm()} className="bg-fuchsia-600 hover:bg-fuchsia-700 text-white px-8 py-4 rounded-2xl font-black shadow-xl hover:-translate-y-1 transition-transform mb-2"><i className="fa-solid fa-plus mr-2"></i> 새 상점 아이템 등록</button>
+               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                 {dbData.store.map(p => (
+                   <div key={p.id} className={`bg-white p-5 rounded-2xl border-2 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 font-bold shadow-sm ${p.isPaused?'border-gray-200 bg-gray-50':'border-fuchsia-100'}`}>
+                     <div className="flex items-center gap-4"><div className="w-12 h-12 flex items-center justify-center bg-white rounded-xl border border-gray-100 shadow-sm">{renderIcon(p.icon)}</div><div><h4 className="text-lg text-fuchsia-950 flex items-center gap-2">{p.name} {p.isPaused&&<Badge type="negative">판매중지</Badge>}</h4><p className="text-sm text-fuchsia-600">{formatMoney(p.price)} / 재고: {p.stock}개</p></div></div>
+                     <div className="flex gap-2 w-full sm:w-auto">
+                        <button onClick={()=>openForm(p)} className="flex-1 sm:flex-none bg-slate-100 hover:bg-slate-200 text-slate-700 px-5 py-2.5 rounded-xl transition-colors">수정</button>
+                     </div>
+                   </div>
+                 ))}
+               </div>
+             </div>
+          )}
+
+          {tab === 'allinv' && assets.role==='admin' && (
+            <div className="space-y-4">
+              <div className="bg-white p-6 rounded-3xl border-2 border-fuchsia-100 shadow-md max-h-[600px] overflow-y-auto pr-2 scrollbar-hide">
+                <table className="w-full text-left text-sm font-bold">
+                   <thead className="text-fuchsia-500 border-b-2 border-fuchsia-50"><tr><th className="pb-3">소유자</th><th className="pb-3">아이템명</th><th className="pb-3">상태 및 구매일</th><th className="pb-3 text-right">강제 액션</th></tr></thead>
+                   <tbody className="divide-y divide-fuchsia-50 text-fuchsia-900">
+                     {allInv.map(i => (
+                       <tr key={i.id} className={`${i.status==='used'?'opacity-50 grayscale bg-gray-50/50':''} transition-colors hover:bg-fuchsia-50/30`}>
+                         <td className="py-4 px-2">[{dbData.users[i.userId]?.name}]</td>
+                         <td className="py-4 flex items-center gap-3"><div className="w-10 h-10 rounded-lg bg-white border border-fuchsia-50 flex items-center justify-center shadow-sm">{renderIcon(i.icon)}</div><span className="font-black text-base">{i.productName}</span></td>
+                         <td className="py-4 text-xs text-gray-500">{i.status==='used'?`사용완료 (${formatDate(i.usedAt)})`:`활성 (${formatDate(i.purchasedAt)})`}</td>
+                         <td className="py-4 text-right space-x-2">
+                           {i.status !== 'used' && <button onClick={()=>useItem(i,true)} className="bg-purple-100 hover:bg-purple-200 text-purple-700 px-4 py-2 rounded-lg transition-colors font-black">강제사용</button>}
+                           <button onClick={()=>refundItem(i,true)} className="bg-rose-100 hover:bg-rose-200 text-rose-700 px-4 py-2 rounded-lg transition-colors font-black">강제환불</button>
+                           <button onClick={()=>{
+                             showConfirm('이 아이템을 흔적 없이 영구 삭제하시겠습니까?\n(학생에게 환불금이 지급되지 않습니다)', async ()=>{
+                               await db.ref(`economy_inventory/${i.id}`).remove(); showAlert('삭제 완료');
+                             });
+                           }} className="bg-red-50 hover:bg-red-500 hover:text-white text-red-500 border border-red-100 px-4 py-2 rounded-lg transition-colors font-black">삭제</button>
+                         </td>
+                       </tr>
+                     ))}
+                     {allInv.length===0 && <tr><td colSpan={4} className="py-10 text-center text-fuchsia-300 font-bold">학생들이 구매한 아이템이 없습니다.</td></tr>}
+                   </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // --- [기부 센터 화면] ---
+    function DonateView({ assets, dbData, db, showAlert, showConfirm }) {
+      const [tab, setTab] = useState('donate');
+      const [dGoal, setDGoal] = useState('general'); const [dAmt, setDAmt] = useState(''); const [dMsg, setDMsg] = useState(''); const [dAnon, setDAnon] = useState(false);
+      const [modal, setModal] = useState(null); 
+      const [gId, setGId] = useState(''); const [gTitle, setGTitle] = useState(''); const [gDesc, setGDesc] = useState(''); const [gTarget, setGTarget] = useState('');
+      const [selItem, setSelItem] = useState(null); const [giveTarget, setGiveTarget] = useState('');
+      const [deleteGoalData, setDeleteGoalData] = useState(null); const [transferTargetId, setTransferTargetId] = useState('general');
+
+      const executeDonate = async (e) => {
+        e.preventDefault();
+        const amt = parseInt(dAmt, 10);
+        if(isNaN(amt)||amt<=0) return;
+        if(amt>assets.cash) return showAlert('현금이 부족합니다.');
+        const gName = dGoal==='general' ? '일반 기부' : dbData.goals.find(g=>g.id===dGoal)?.title;
+        
+        showConfirm(dGoal==='general'?'일반 기부는 목표 달성 바에 누적되지 않습니다.\n그래도 기부하시겠습니까?':`'${gName}'에 기부할까요?`, async () => {
+          const updates = {};
+          updates[`economy_users/${assets.id}/cash`] = assets.cash - amt;
+          if (dGoal === 'general') {
+            updates[`economy_users/${assets.id}/generalDonated`] = (assets.generalDonated || 0) + amt;
+          } else {
+            const goal = dbData.goals.find(g=>g.id===dGoal);
+            if(goal) updates[`economy_donation_goals/${dGoal}/current`] = (goal.current||0)+amt;
+          }
+          const dId = db.ref('economy_donations').push().key;
+          updates[`economy_donations/${dId}`] = { id: dId, userId: assets.id, userName: dAnon?'익명 천사':assets.name, goalId: dGoal, goalName: gName, amount: amt, message: dMsg, timestamp: Date.now() };
+          const tId = db.ref('economy_transactions').push().key;
+          updates[`economy_transactions/${tId}`] = { id: tId, userId: assets.id, type: '기부', desc: `기부: ${gName}`, amount: `-${formatMoney(amt)}`, balance: formatMoney(assets.cash-amt), isPositive: false, timestamp: Date.now() };
+          await db.ref('/').update(updates); setDAmt(''); setDMsg(''); setDAnon(false); showAlert('소중한 기부, 정말 감사합니다!');
+        });
+      };
+
+      const handleRefund = (don, force=false) => {
+        if(!force && (Date.now()-don.timestamp)/3600000 > dbData.settings.donationRefundLimitHours) return showAlert('취소 기한이 경과하여 환불할 수 없습니다.');
+        showConfirm(force?'강제로 기부를 취소시킵니다.':'기부를 취소하고 금액을 환불받을까요?', async () => {
+          const updates = {};
+          const u = dbData.users[don.userId];
+          updates[`economy_donations/${don.id}`] = null;
+          updates[`economy_users/${u.id}/cash`] = u.cash+don.amount;
+          if(don.goalId==='general') updates[`economy_users/${u.id}/generalDonated`] = Math.max(0,(u.generalDonated||0)-don.amount);
+          else {
+            const goal = dbData.goals.find(g=>g.id===don.goalId);
+            if(goal) updates[`economy_donation_goals/${don.goalId}/current`] = Math.max(0, goal.current-don.amount);
+          }
+          const tId = db.ref('economy_transactions').push().key;
+          updates[`economy_transactions/${tId}`] = { id: tId, userId: u.id, type: '기부 취소', desc: `취소: ${don.goalName}`, amount: `+${formatMoney(don.amount)}`, balance: formatMoney(u.cash+don.amount), isPositive: true, timestamp: Date.now() };
+          await db.ref('/').update(updates); showAlert('기부가 취소되었습니다.');
+        });
+      };
+
+      const saveGoal = async (e) => {
+        e.preventDefault();
+        const id = gId || db.ref('economy_donation_goals').push().key;
+        await db.ref(`economy_donation_goals/${id}`).set({ id, title: gTitle, desc: gDesc, target: parseInt(gTarget,10), current: gId?dbData.goals.find(g=>g.id===gId).current:0 });
+        setModal(null); showAlert('목표가 저장되었습니다.');
+      };
+
+      const executeDeleteGoal = async (e) => {
+        e.preventDefault();
+        if(!deleteGoalData) return;
+        
+        showConfirm(`마지막 확인입니다.\n[${deleteGoalData.title}] 목표를 완전히 삭제하고, 설정하신 대로 금액을 이동시킵니다.`, async () => {
+          const updates = {};
+          updates[`economy_donation_goals/${deleteGoalData.id}`] = null;
+          const dons = dbData.donations.filter(d=>d.goalId===deleteGoalData.id);
+          
+          if(transferTargetId==='vanish') {
+            dons.forEach(d => { updates[`economy_donations/${d.id}/goalId`] = 'vanished'; updates[`economy_donations/${d.id}/goalName`] = '(소멸된 목표)'; });
+          } else if(transferTargetId==='refund') {
+            dons.forEach(d => {
+               updates[`economy_donations/${d.id}`] = null; 
+               const u = dbData.users[d.userId];
+               if(u) {
+                 updates[`economy_users/${u.id}/cash`] = (updates[`economy_users/${u.id}/cash`] || u.cash) + d.amount;
+                 const tId = db.ref('economy_transactions').push().key;
+                 updates[`economy_transactions/${tId}`] = { id: tId, userId: u.id, type: '기부 환불', desc: `목표 삭제로 인한 자동 환불`, amount: `+${formatMoney(d.amount)}`, balance: formatMoney((updates[`economy_users/${u.id}/cash`])), isPositive: true, timestamp: Date.now() };
+               }
+            });
+          } else if(transferTargetId==='general') {
+            dons.forEach(d => {
+              updates[`economy_donations/${d.id}/goalId`] = 'general'; updates[`economy_donations/${d.id}/goalName`] = '일반 기부 (강제 이동됨)';
+              const u = dbData.users[d.userId];
+              if(u) updates[`economy_users/${u.id}/generalDonated`] = (updates[`economy_users/${u.id}/generalDonated`] || u.generalDonated || 0) + d.amount;
+            });
+          } else {
+            const targetGoal = dbData.goals.find(g => g.id === transferTargetId);
+            if(targetGoal) {
+              updates[`economy_donation_goals/${transferTargetId}/current`] = (updates[`economy_donation_goals/${transferTargetId}/current`] || targetGoal.current || 0) + deleteGoalData.current;
+              dons.forEach(d => { updates[`economy_donations/${d.id}/goalId`] = transferTargetId; updates[`economy_donations/${d.id}/goalName`] = targetGoal.title; });
+            }
+          }
+          await db.ref('/').update(updates); setDeleteGoalData(null); showAlert('삭제 및 정산이 완료되었습니다.');
+        });
+      };
+
+      const assignItem = async (e) => {
+        e.preventDefault();
+        if(!giveTarget) return;
+        const updates = {};
+        updates[`economy_item_donations/${selItem.id}`] = null;
+        const iId = db.ref('economy_inventory').push().key;
+        updates[`economy_inventory/${iId}`] = { id: iId, userId: giveTarget, productId: selItem.productId, productName: selItem.productName, icon: selItem.icon, price: selItem.price, purchasedAt: Date.now(), isRefundable: false, refundLimitHours: 0, status: 'active' };
+        const tId = db.ref('economy_transactions').push().key;
+        updates[`economy_transactions/${tId}`] = { id: tId, userId: giveTarget, type: '기부품 수령', desc: `나눔 장터 수령: ${selItem.productName}`, amount: '0G', balance: formatMoney(dbData.users[giveTarget].cash), isPositive: true, timestamp: Date.now() };
+        await db.ref('/').update(updates); setModal(null); setSelItem(null); showAlert('지급 완료!');
+      };
+
+      const renderIcon = (iconStr) => iconStr?.startsWith('http') ? <img src={iconStr} className="w-12 h-12 object-cover rounded-xl" alt="icon"/> : <span className="text-5xl">{iconStr}</span>;
+
+      const uMap = {}; dbData.donations.forEach(d=>{uMap[d.userId]=(uMap[d.userId]||0)+d.amount;});
+      const ranks = Object.values(dbData.users).filter(u=>u.role==='student').map(u=>({...u, amt:(u.generalDonated||0)+(uMap[u.id]||0)})).filter(u=>u.amt>0).sort((a,b)=>b.amt-a.amt);
+
+      return (
+        <div className="animate-fade-in space-y-8">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 bg-white p-8 rounded-[2.5rem] shadow-xl border-2 border-rose-100">
+            <div>
+              <h1 className="text-3xl font-black text-rose-950 flex items-center gap-4"><div className="bg-rose-100 p-3 rounded-2xl"><i className="fa-solid fa-hand-holding-heart text-rose-600"></i></div> 학급 기부 센터</h1>
+              <p className="text-rose-600 font-bold mt-4">목표를 향해 힘을 모아주세요! 여러분의 정성이 모여 큰 변화를 만듭니다.</p>
+            </div>
+            <div className="flex gap-2 bg-rose-50 p-2 rounded-2xl border-2 border-rose-100 overflow-x-auto max-w-full scrollbar-hide">
+              <button onClick={()=>setTab('donate')} className={`whitespace-nowrap px-6 py-3 font-extrabold rounded-xl transition-all ${tab==='donate'?'bg-white text-rose-900 shadow-md':'text-rose-500 hover:text-rose-700'}`}>기부 현황 & 참여</button>
+              <button onClick={()=>setTab('items')} className={`whitespace-nowrap px-6 py-3 font-extrabold rounded-xl transition-all ${tab==='items'?'bg-white text-rose-900 shadow-md':'text-rose-500 hover:text-rose-700'}`}>나눔 장터 (아이템)</button>
+              {assets.role==='admin'&&<button onClick={()=>setTab('mng')} className={`whitespace-nowrap px-6 py-3 font-extrabold rounded-xl transition-all ${tab==='mng'?'bg-white text-rose-900 shadow-md':'text-rose-500 hover:text-rose-700'}`}>관리자 모드</button>}
+            </div>
+          </div>
+
+          <Modal isOpen={modal==='goalForm'} title={gId?"목표 수정":"새 기부 목표 등록"} iconStr="fa-solid fa-flag" color="rose" onClose={()=>setModal(null)}>
+            <form onSubmit={saveGoal} className="space-y-6">
+              <input required autoFocus placeholder="목표 타이틀 (예: 반 전체 과자 파티)" className="w-full p-4 bg-white border-2 border-rose-100 rounded-xl font-bold outline-none focus:border-rose-400" value={gTitle} onChange={e=>setGTitle(e.target.value)}/>
+              <input required placeholder="설명 (무엇을 위한 기부인가요?)" className="w-full p-4 bg-white border-2 border-rose-100 rounded-xl font-bold outline-none focus:border-rose-400" value={gDesc} onChange={e=>setGDesc(e.target.value)}/>
+              <input required type="number" placeholder="목표 달성 금액 (G)" className="w-full p-4 bg-white border-2 border-rose-100 rounded-xl font-bold outline-none focus:border-rose-400" value={gTarget} onChange={e=>setGTarget(e.target.value)}/>
+              <button type="submit" className="w-full py-4 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-black shadow-lg transition-colors">저장하기</button>
+            </form>
+          </Modal>
+
+          <Modal isOpen={!!deleteGoalData} title="목표 삭제 및 금액 정산" iconStr="fa-solid fa-triangle-exclamation" color="rose" onClose={()=>setDeleteGoalData(null)}>
+            <form onSubmit={executeDeleteGoal} className="space-y-6">
+              <div className="bg-rose-50 p-4 rounded-xl text-rose-900 font-bold text-center border border-rose-100">
+                 <p className="text-xl font-black mb-2">[{deleteGoalData?.title}]</p>
+                 <p>이 목표를 영구 삭제합니다.</p>
+                 <p className="mt-2 text-rose-600">현재 모인 금액: <span className="font-black text-lg">{formatMoney(deleteGoalData?.current)}</span></p>
+              </div>
+              <div className="space-y-2">
+                 <label className="block text-sm font-extrabold text-rose-900 mb-2">모인 금액을 어떻게 처리할까요?</label>
+                 <CustomDropdown 
+                    options={[
+                      {value:'refund', label:'기부한 학생들에게 각자 낸 만큼 전액 환불'},
+                      {value:'general', label:'일반 기부금으로 이동 (목표 없이 누적됨)'}, 
+                      ...(dbData.goals||[]).filter(g=>g.id!==deleteGoalData?.id).map(g=>({value:g.id, label:`[${g.title}] 목표로 이동`})), 
+                      {value:'vanish', label:'공중 분해 (환불 없이 돈 소멸)'}
+                    ]}
+                    value={transferTargetId} onChange={setTransferTargetId} placeholder="처리 방식 선택"
+                 />
+              </div>
+              <button type="submit" className="w-full py-4 bg-red-600 hover:bg-red-700 transition-colors text-white rounded-xl font-black shadow-lg">삭제 및 정산 실행</button>
+            </form>
+          </Modal>
+
+          <Modal isOpen={modal==='giveItem'} title="나눔 아이템 지급" iconStr="fa-solid fa-gift" color="rose" onClose={()=>setModal(null)}>
+            <form onSubmit={assignItem} className="space-y-6">
+               <div className="text-center bg-rose-50 p-4 rounded-xl border border-rose-100">
+                 <div className="mb-2 flex justify-center">{renderIcon(selItem?.icon)}</div>
+                 <h4 className="font-black text-lg text-rose-900">{selItem?.productName}</h4>
+                 <p className="text-xs font-bold text-rose-500 mt-1">기부자: {selItem?.donorName}님</p>
+               </div>
+               <div>
+                 <label className="block text-sm font-extrabold text-rose-900 mb-2">누구에게 이 선물을 지급할까요?</label>
+                 <CustomDropdown options={Object.values(dbData.users).filter(u=>u.role==='student').map(u=>({value:u.id, label:u.name}))} value={giveTarget} onChange={setGiveTarget} placeholder="학생 선택" />
+               </div>
+               <button type="submit" className="w-full bg-rose-600 text-white py-4 rounded-xl font-black shadow-lg hover:bg-rose-700 transition-colors">아이템 선물하기</button>
+            </form>
+          </Modal>
+
+          {tab === 'donate' && (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+               <div className="lg:col-span-8 space-y-8">
+                 <section className="bg-white p-8 rounded-[2rem] shadow-xl border-2 border-rose-100">
+                   <h3 className="text-2xl font-black text-rose-950 mb-6 flex items-center gap-3"><i className="fa-solid fa-bullseye text-rose-500"></i> 진행 중인 기부 목표</h3>
+                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                     {(dbData.goals||[]).map(goal => {
+                       const percent = Math.min(100, ((goal.current || 0) / goal.target) * 100);
+                       return (
+                         <div key={goal.id} className="bg-rose-50/50 p-6 rounded-2xl border-2 border-rose-100 flex flex-col hover:border-rose-300 transition-colors shadow-sm">
+                           <div className="flex justify-between items-start mb-2">
+                             <h4 className="font-black text-xl text-rose-900 leading-tight pr-2">{goal.title}</h4>
+                             <span className="bg-white text-rose-600 text-xs font-black px-2 py-1 rounded-lg border border-rose-100 shadow-sm whitespace-nowrap">{percent.toFixed(1)}%</span>
+                           </div>
+                           <p className="text-sm font-bold text-rose-500 mb-6">{goal.desc}</p>
+                           <div className="mt-auto">
+                             <div className="flex justify-between text-xs font-black text-rose-700 mb-2"><span>{formatMoney(goal.current)} 모임!</span><span>목표: {formatMoney(goal.target)}</span></div>
+                             <div className="w-full bg-white rounded-full h-3 mb-2 overflow-hidden border border-rose-100"><div className="bg-gradient-to-r from-rose-400 to-rose-600 h-3 rounded-full transition-all duration-1000 ease-out" style={{ width: `${percent}%` }}></div></div>
+                           </div>
+                         </div>
+                       );
+                     })}
+                     {(dbData.goals||[]).length === 0 && <div className="col-span-full py-10 text-center font-bold text-rose-300 bg-white border-2 border-dashed border-rose-100 rounded-2xl">현재 진행 중인 기부 목표가 없습니다.</div>}
+                   </div>
+                 </section>
+
+                 <section className="bg-white p-8 rounded-[2rem] shadow-xl border-2 border-rose-100 flex flex-col md:flex-row gap-8 items-center">
+                   <div className="flex-1 w-full space-y-6">
+                     <h3 className="text-2xl font-black text-rose-950 flex items-center gap-3"><i className="fa-solid fa-coins text-amber-400"></i> 기부 참여하기</h3>
+                     <form onSubmit={executeDonate} className="space-y-4">
+                       <CustomDropdown options={[{value:'general', label:'일반 기부 (특정 목표 없이 학급 기금으로)'}, ...(dbData.goals || []).map(g=>({value:g.id, label:`[${g.title}] 목표에 기부`}))]} value={dGoal} onChange={setDGoal} placeholder="기부할 곳을 선택하세요" />
+                       <input type="number" required placeholder={`기부할 금액 (보유: ${formatMoney(assets.cash)})`} className="w-full bg-white border-2 border-rose-100 rounded-xl px-5 py-4 outline-none focus:border-rose-400 font-black text-lg shadow-inner" value={dAmt} onChange={(e) => setDAmt(e.target.value)} />
+                       <input type="text" placeholder="응원 메시지 한 마디! (선택 사항)" className="w-full bg-rose-50 border border-rose-100 rounded-xl px-5 py-3 outline-none font-bold text-sm" value={dMsg} onChange={(e) => setDMsg(e.target.value)} />
+                       <label className="flex items-center gap-2 font-bold px-2 text-rose-700 cursor-pointer"><input type="checkbox" checked={dAnon} onChange={e=>setDAnon(e.target.checked)} className="w-5 h-5 accent-rose-600"/> 익명으로 조용히 기부하기</label>
+                       <button type="submit" className="w-full bg-rose-600 hover:bg-rose-700 text-white py-4 rounded-xl font-black shadow-lg transition-colors">따뜻한 마음 전달하기</button>
+                     </form>
+                   </div>
+                   <div className="w-full md:w-1/3 bg-rose-50 p-6 rounded-3xl border border-rose-100 self-stretch flex flex-col">
+                      <h4 className="font-black text-rose-900 mb-4 flex items-center gap-2"><i className="fa-solid fa-medal text-amber-500"></i> 명예의 전당</h4>
+                      <div className="space-y-2 flex-1 max-h-48 overflow-y-auto pr-2 scrollbar-hide">
+                        {ranks.map((u,i)=>(
+                          <div key={u.id} className="flex justify-between items-center bg-white p-3 rounded-xl font-bold shadow-sm border border-rose-50 hover:-translate-y-0.5 transition-transform">
+                            <span className={i===0?'text-amber-500 font-black flex items-center gap-1':i===1?'text-slate-400 font-black flex items-center gap-1':i===2?'text-orange-500 font-black flex items-center gap-1':'text-rose-900'}><span className="w-4 text-center">{i+1}</span> {u.name}</span><span className="text-rose-600 font-black">{formatMoney(u.amt)}</span>
+                          </div>
+                        ))}
+                        {ranks.length === 0 && <p className="text-sm text-rose-400 font-bold text-center mt-10">아직 기부 천사가 없습니다.</p>}
+                      </div>
+                   </div>
+                 </section>
+               </div>
+               
+               <div className="lg:col-span-4 space-y-8">
+                 <section className="bg-white p-6 rounded-[2rem] border-2 border-rose-100 shadow-xl flex flex-col max-h-[800px]">
+                   <h3 className="font-black text-xl mb-6 text-rose-900 flex items-center gap-2"><i className="fa-solid fa-receipt text-rose-400"></i> 기부 및 환불 내역</h3>
+                   <div className="flex-1 overflow-y-auto space-y-3 pr-2 scrollbar-hide">
+                     {(dbData.donations || []).map(d=>{
+                       const canRef = (Date.now() - d.timestamp)/3600000 <= (dbData.settings.donationRefundLimitHours || 24);
+                       const isMine = d.userId === assets.id;
+                       return (
+                         <div key={d.id} className={`p-4 rounded-2xl border ${isMine?'bg-rose-50 border-rose-200':'bg-slate-50 border-slate-100'} shadow-sm`}>
+                           <div className="flex justify-between text-sm font-black mb-2"><span className="text-rose-900">{d.userName} {isMine&&<span className="text-[10px] bg-rose-200 text-rose-800 px-1.5 py-0.5 rounded ml-1">나</span>}</span><span className="text-rose-600">{formatMoney(d.amount)}</span></div>
+                           <div className="text-xs font-bold text-gray-500 mb-3 flex items-center gap-1"><i className="fa-solid fa-arrow-right text-[10px]"></i> {d.goalName}</div>
+                           {d.message && <div className="bg-white p-2.5 rounded-xl text-sm font-bold text-gray-700 shadow-inner border border-gray-100">"{d.message}"</div>}
+                           
+                           {isMine && canRef && <button onClick={()=>handleRefund(d, false)} className="mt-3 w-full text-xs bg-white text-rose-600 border-2 border-rose-100 py-2 rounded-lg font-black hover:bg-rose-50 transition-colors">기부 취소 (환불)</button>}
+                           {assets.role === 'admin' && <button onClick={()=>handleRefund(d, true)} className="mt-3 w-full text-xs bg-red-100 text-red-600 py-2 rounded-lg font-black hover:bg-red-200 transition-colors">강제 취소 (관리자)</button>}
+                         </div>
+                       )
+                     })}
+                     {(dbData.donations || []).length === 0 && <p className="text-sm text-gray-400 font-bold text-center py-10">최근 내역이 없습니다.</p>}
+                   </div>
+                 </section>
+               </div>
+            </div>
+          )}
+
+          {tab === 'items' && (
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
+              <div className="col-span-full mb-2 bg-rose-50 p-4 rounded-2xl border border-rose-100 flex items-center justify-between shadow-sm">
+                 <p className="font-bold text-rose-800 text-sm">학생들이 보관함에서 직접 기부한 아이템들이 모이는 곳입니다.<br/>관리자(선생님)는 여기서 원하는 학생에게 아이템을 나누어 줄 수 있습니다.</p>
+              </div>
+              {(dbData.itemDonations || []).map(i => (
+                <div key={i.id} className="bg-white p-6 rounded-[2rem] border-2 border-rose-100 shadow-lg text-center hover:-translate-y-1 transition-transform flex flex-col">
+                  <div className="bg-rose-50 w-20 h-20 mx-auto rounded-2xl border border-rose-100 flex items-center justify-center mb-4 overflow-hidden shadow-sm">{renderIcon(i.icon)}</div>
+                  <h4 className="font-black text-rose-950 mb-1 leading-tight">{i.productName}</h4>
+                  <p className="text-xs font-bold text-gray-400 mb-6">기부자: <span className="text-rose-500">{i.donorName}</span></p>
+                  {assets.role === 'admin' ? (
+                    <button onClick={()=>{setSelItem(i); setModal('giveItem');}} className="mt-auto w-full bg-rose-600 text-white py-3 rounded-xl font-black shadow-md hover:bg-rose-700 transition-colors">학생 지급</button>
+                  ) : (
+                    <button disabled className="mt-auto w-full bg-slate-100 text-slate-400 py-3 rounded-xl font-black">나눔 대기중</button>
+                  )}
+                </div>
+              ))}
+              {(dbData.itemDonations || []).length===0 && <div className="col-span-full py-20 text-center font-bold text-rose-300 text-xl bg-white rounded-[2.5rem] border-2 border-dashed border-rose-100">현재 나눔 장터에 올라온 물건이 없습니다.</div>}
+            </div>
+          )}
+
+          {tab === 'mng' && assets.role === 'admin' && (
+            <div className="space-y-6">
+              <div className="bg-rose-50 p-6 rounded-2xl border-2 border-rose-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                 <div>
+                   <h3 className="font-black text-rose-900 text-xl mb-1">기부 목표 관리</h3>
+                   <p className="text-sm font-bold text-rose-600">새로운 목표를 세우거나 기존 목표를 수정/삭제할 수 있습니다.</p>
+                 </div>
+                 <button onClick={()=>{setGId('');setGTitle('');setGDesc('');setGTarget('');setModal('goalForm')}} className="bg-rose-600 text-white px-8 py-4 rounded-xl font-black shadow-xl hover:-translate-y-1 transition-transform whitespace-nowrap"><i className="fa-solid fa-plus mr-2"></i> 새 목표 등록</button>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {(dbData.goals||[]).map(g=>(
+                  <div key={g.id} className="bg-white p-6 rounded-3xl border-2 border-rose-100 shadow-md flex flex-col transition-all hover:border-rose-300">
+                    <div className="flex justify-between items-start mb-2">
+                      <h4 className="font-black text-rose-900 text-xl">{g.title}</h4>
+                    </div>
+                    <p className="text-sm font-bold text-gray-500 mb-6 h-10 overflow-hidden">{g.desc}</p>
+                    <div className="mb-6 bg-rose-50 p-4 rounded-2xl border border-rose-50">
+                       <p className="text-xs text-rose-400 font-bold mb-1">모인 금액 / 목표 금액</p>
+                       <p className="font-black text-rose-600 text-xl tracking-tight">{formatMoney(g.current)} <span className="text-sm text-gray-400">/ {formatMoney(g.target)}</span></p>
+                    </div>
+                    <div className="flex gap-2 mt-auto">
+                      <button onClick={()=>{setGId(g.id);setGTitle(g.title);setGDesc(g.desc);setGTarget(g.target);setModal('goalForm')}} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 rounded-xl font-black transition-colors">수정</button>
+                      <button onClick={()=>setDeleteGoalData(g)} className="flex-1 bg-rose-100 hover:bg-rose-500 hover:text-white text-rose-700 py-3 rounded-xl font-black transition-colors">삭제 및 정산</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // --- [설정 화면 (SettingsView)] ---
+    function SettingsView({ assets, dbData, db, showAlert, showConfirm }) {
+      const [pass, setPass] = useState('');
+      const [passConfirm, setPassConfirm] = useState('');
+      const [profileUrl, setProfileUrl] = useState(assets.profileUrl || '');
+      const [showPwdErrors, setShowPwdErrors] = useState(false);
+      
+      const [locked, setLocked] = useState(true);
+      const [lockInput, setLockInput] = useState('');
+
+      const checkLock = (e) => {
+        e.preventDefault();
+        if (lockInput === String(assets.pass)) setLocked(false);
+        else showAlert('현재 비밀번호가 일치하지 않습니다.');
+      };
+
+      const p1 = pass === String(assets.pass);
+      const p2 = pass === passConfirm && pass.length > 0;
+      const p3 = !/[ㄱ-ㅎ|ㅏ-ㅣ|가-힣]/.test(pass);
+      const p4 = pass.length >= 4;
+      const tTypes = (/[a-z]/.test(pass)?1:0) + (/[A-Z]/.test(pass)?1:0) + (/[0-9]/.test(pass)?1:0) + (/[^a-zA-Z0-9\s]/.test(pass)?1:0);
+      const p5 = tTypes >= 2;
+      const p6 = !/[\.#$\[\]]/.test(pass);
+      const canSavePersonal = !showPwdErrors || (p2 && p3 && p4 && p5 && p6);
+
+      const savePersonal = async (e) => {
+        e.preventDefault();
+        if (pass && !canSavePersonal) return showAlert('비밀번호 조건을 모두 만족해야 합니다.');
+        const updates = {};
+        if (pass) updates[`economy_users/${assets.id}/pass`] = pass;
+        updates[`economy_users/${assets.id}/profileUrl`] = profileUrl;
+        await db.ref('/').update(updates);
+        setPass(''); setPassConfirm(''); setShowPwdErrors(false);
+        showAlert('내 정보가 성공적으로 저장되었습니다.');
+      };
+
+      const [sKey, setSKey] = useState(dbData.settings?.googleSheetUrl || '');
+      const [pText, setPText] = useState(dbData.settings?.providerText || 'Google Finance');
+      
+      const [sTrMin, setSTrMin] = useState(dbData.settings?.transferMin || 0);
+      const [sTrMax, setSTrMax] = useState(dbData.settings?.transferMax || 0);
+      const [sTrFee, setSTrFee] = useState(dbData.settings?.transferFee || 0);
+      const [trNotice, setTrNotice] = useState(dbData.settings?.transferNotice || '');
+
+      const [tabs, setTabs] = useState(dbData.settings?.tabs || DEFAULT_TABS);
+      const [notices, setNotices] = useState(dbData.settings?.notices || []);
+      const [nForm, setNForm] = useState({ id: '', title: '', content: '', start: '', end: '', color: '#9333ea', link: '' });
+      const [showNForm, setShowNForm] = useState(false);
+
+      const moveTab = (idx, dir) => {
+        if (idx + dir < 0 || idx + dir >= tabs.length) return;
+        const newTabs = [...tabs];
+        const temp = newTabs[idx];
+        newTabs[idx] = newTabs[idx + dir];
+        newTabs[idx + dir] = temp;
+        setTabs(newTabs);
+      };
+
+      const saveAdminSettings = async (e) => {
+        e.preventDefault();
+        const updates = {};
+        updates['economy_settings'] = {
+          ...dbData.settings, 
+          googleSheetUrl: sKey, 
+          providerText: pText,
+          transferMin: parseInt(sTrMin)||0, transferMax: parseInt(sTrMax)||0, transferFee: parseInt(sTrFee)||0,
+          transferNotice: trNotice,
+          tabs: tabs.map((t, i) => ({ ...t, order: i+1 })),
+          notices: notices
+        };
+        await db.ref('/').update(updates);
+        showAlert('관리자 설정이 모두 저장되었습니다.');
+      };
+
+      const saveNotice = (e) => {
+        e.preventDefault();
+        const startMs = new Date(nForm.start).getTime();
+        const endMs = new Date(nForm.end).getTime();
+        if(isNaN(startMs) || isNaN(endMs) || startMs >= endMs) return showAlert('시작 및 종료 시간을 올바르게 설정하세요.');
+        
+        let newNotices = [...notices];
+        if (nForm.id) {
+          const idx = newNotices.findIndex(n => n.id === nForm.id);
+          if(idx !== -1) newNotices[idx] = { ...nForm, startMs, endMs };
+        } else {
+          newNotices.push({ ...nForm, id: Date.now().toString(), startMs, endMs });
+        }
+        setNotices(newNotices);
+        setShowNForm(false);
+      };
+
+      if (locked) {
+        return (
+          <div className="flex items-center justify-center min-h-[60vh]">
+            <form onSubmit={checkLock} className="bg-white p-8 rounded-[2.5rem] shadow-xl border-4 border-purple-100 max-w-md w-full animate-zoom-in">
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 bg-purple-100 rounded-2xl flex items-center justify-center text-purple-600 text-3xl mx-auto mb-4"><i className="fa-solid fa-lock"></i></div>
+                <h2 className="text-2xl font-black text-purple-900">보안 잠금 해제</h2>
+                <p className="text-purple-500 font-bold mt-2">설정에 접근하려면 현재 비밀번호를 입력하세요.</p>
+              </div>
+              <input type="password" autoFocus className="w-full p-4 bg-purple-50 rounded-xl text-center text-2xl font-black tracking-widest outline-none focus:border-purple-400 border-2 border-transparent mb-6 shadow-inner" value={lockInput} onChange={e=>setLockInput(e.target.value)}/>
+              <button type="submit" className="w-full bg-purple-600 hover:bg-purple-700 text-white p-4 rounded-xl font-black shadow-lg transition-colors">잠금 해제</button>
+            </form>
+          </div>
+        );
+      }
+
+      return (
+        <div className="animate-fade-in space-y-8">
+          <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border-2 border-purple-100 relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-48 h-48 bg-purple-50 rounded-full blur-3xl opacity-50 -mr-10 -mt-10"></div>
+            <h2 className="text-2xl font-black text-purple-950 mb-6 flex items-center gap-3 relative z-10"><div className="bg-purple-100 p-2 rounded-xl text-purple-600"><i className="fa-solid fa-user-gear"></i></div> 내 정보 설정</h2>
+            
+            <form onSubmit={savePersonal} className="space-y-6 max-w-2xl relative z-10">
+              <div className="bg-purple-50/50 p-6 rounded-2xl border border-purple-50">
+                <label className="block text-sm font-extrabold mb-3 text-purple-900">프로필 사진 (이미지 인터넷 주소 URL)</label>
+                <div className="flex items-center gap-4">
+                   {profileUrl ? <img src={profileUrl} className="w-16 h-16 rounded-full object-cover shadow-sm border-2 border-purple-200" alt="프사"/> : <div className="w-16 h-16 rounded-full bg-purple-100 flex items-center justify-center text-purple-400 text-2xl border-2 border-purple-200"><i className="fa-solid fa-user"></i></div>}
+                   <input type="text" placeholder="https://..." className="flex-1 p-4 bg-white rounded-xl font-bold outline-none focus:border-purple-400 border-2 border-purple-100 shadow-sm" value={profileUrl} onChange={e=>setProfileUrl(e.target.value)} />
+                </div>
+              </div>
+
+              <div className="bg-purple-50/50 p-6 rounded-2xl border border-purple-50 space-y-4">
+                <div className="flex justify-between items-center"><label className="block text-sm font-extrabold text-purple-900">접속 비밀번호 변경</label><button type="button" onClick={()=>setShowPwdErrors(!showPwdErrors)} className="text-xs bg-purple-200 text-purple-800 px-3 py-1.5 rounded-lg font-bold hover:bg-purple-300">비밀번호 변경하기</button></div>
+                {showPwdErrors && (
+                  <div className="space-y-4 animate-fade-in mt-4">
+                    <input type="password" placeholder="새로운 비밀번호 입력" className="w-full p-4 bg-white rounded-xl font-bold outline-none focus:border-purple-400 border-2 border-purple-100 tracking-widest text-lg shadow-sm" value={pass} onChange={e=>setPass(e.target.value)} />
+                    <input type="password" placeholder="새로운 비밀번호 확인" className="w-full p-4 bg-white rounded-xl font-bold outline-none focus:border-purple-400 border-2 border-purple-100 tracking-widest text-lg shadow-sm" value={passConfirm} onChange={e=>setPassConfirm(e.target.value)} />
+                    
+                    <div className="bg-white p-4 rounded-xl border-2 border-purple-100 grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm font-bold shadow-inner">
+                       <div className={p2 ? 'text-green-600' : 'text-gray-400'}><i className={`fa-solid ${p2?'fa-check':'fa-xmark'} mr-1`}></i> 새 비밀번호 일치</div>
+                       <div className={p4 ? 'text-green-600' : 'text-gray-400'}><i className={`fa-solid ${p4?'fa-check':'fa-xmark'} mr-1`}></i> 4자리 이상</div>
+                       <div className={p3 ? 'text-green-600' : 'text-red-500'}><i className={`fa-solid ${p3?'fa-check':'fa-xmark'} mr-1`}></i> 한글 사용 금지</div>
+                       <div className={p6 ? 'text-green-600' : 'text-red-500'}><i className={`fa-solid ${p6?'fa-check':'fa-xmark'} mr-1`}></i> 특수기호 (. # $ [ ]) 금지</div>
+                       <div className={`col-span-full ${p5 ? 'text-green-600' : 'text-gray-400'}`}>
+                         <i className={`fa-solid ${p5?'fa-check':'fa-xmark'} mr-1`}></i> 영소문/영대문/숫자/특수기호 중 2가지 이상 조합 (현재 {tTypes}가지)
+                       </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <button type="submit" className="bg-purple-600 hover:bg-purple-700 text-white px-10 py-4 rounded-xl font-black shadow-lg hover:-translate-y-1 transition-all text-lg w-full sm:w-auto">저장하기</button>
+            </form>
+          </div>
+
+          {assets.role === 'admin' && (
+            <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border-2 border-indigo-100">
+               <h2 className="text-2xl font-black text-indigo-950 mb-6 flex items-center gap-3"><div className="bg-indigo-100 p-2 rounded-xl text-indigo-600"><i className="fa-solid fa-sliders"></i></div> 관리자 고급 설정</h2>
+               
+               <form onSubmit={saveAdminSettings} className="space-y-8 animate-fade-in">
+                 
+                 <div className="bg-blue-50 p-6 rounded-3xl border border-blue-200 shadow-sm">
+                    <div className="flex justify-between items-center mb-4">
+                       <h4 className="font-black text-blue-950 text-xl flex items-center gap-2"><i className="fa-solid fa-bullhorn text-blue-600"></i> 글로벌 공지사항 관리</h4>
+                       <button type="button" onClick={()=>{setNForm({id:'', title:'', content:'', start:'', end:'', color:'#3b82f6', link:''}); setShowNForm(true);}} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold shadow-md hover:bg-blue-700">+ 새 공지 추가</button>
+                    </div>
+                    <div className="space-y-3">
+                      {notices.map(n => (
+                        <div key={n.id} className="bg-white p-4 rounded-xl border border-blue-100 flex justify-between items-center shadow-sm">
+                          <div className="flex items-center gap-3">
+                            <div className="w-4 h-4 rounded-full" style={{background: n.color}}></div>
+                            <div>
+                              <p className="font-black text-blue-900">{n.title}</p>
+                              <p className="text-xs text-gray-500 font-bold">{formatDate(n.startMs)} ~ {formatDate(n.endMs)}</p>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                             <button type="button" onClick={()=>{setNForm({...n, start: new Date(n.startMs).toISOString().slice(0,16), end: new Date(n.endMs).toISOString().slice(0,16)}); setShowNForm(true);}} className="bg-slate-100 px-3 py-1.5 rounded-lg text-sm font-bold text-slate-700">수정</button>
+                             <button type="button" onClick={()=>showConfirm('삭제할까요?', ()=>setNotices(notices.filter(x=>x.id!==n.id)))} className="bg-red-50 px-3 py-1.5 rounded-lg text-sm font-bold text-red-600">삭제</button>
+                          </div>
+                        </div>
+                      ))}
+                      {notices.length===0 && <p className="text-sm font-bold text-blue-400 text-center py-4">등록된 공지사항이 없습니다.</p>}
+                    </div>
+
+                    {showNForm && (
+                      <div className="mt-4 p-5 bg-white border-2 border-blue-200 rounded-2xl space-y-4 shadow-inner">
+                         <input type="text" placeholder="공지 제목" className="w-full p-3 bg-blue-50 rounded-lg outline-none font-black" value={nForm.title} onChange={e=>setNForm({...nForm, title:e.target.value})}/>
+                         <textarea placeholder="공지 내용 (화면 상단에 흐를 내용입니다)" className="w-full p-3 bg-blue-50 rounded-lg outline-none font-bold h-20" value={nForm.content} onChange={e=>setNForm({...nForm, content:e.target.value})}/>
+                         <div className="grid grid-cols-2 gap-4">
+                           <div><label className="text-xs font-bold text-blue-800">게시 시작</label><input type="datetime-local" className="w-full p-3 bg-blue-50 rounded-lg outline-none font-bold text-sm" value={nForm.start} onChange={e=>setNForm({...nForm, start:e.target.value})}/></div>
+                           <div><label className="text-xs font-bold text-blue-800">게시 종료</label><input type="datetime-local" className="w-full p-3 bg-blue-50 rounded-lg outline-none font-bold text-sm" value={nForm.end} onChange={e=>setNForm({...nForm, end:e.target.value})}/></div>
+                         </div>
+                         <div className="flex gap-4">
+                           <div className="flex-1"><label className="text-xs font-bold text-blue-800">배경 색상 (Hex)</label><input type="color" className="w-full h-12 rounded-lg cursor-pointer" value={nForm.color} onChange={e=>setNForm({...nForm, color:e.target.value})}/></div>
+                           <div className="flex-[2]"><label className="text-xs font-bold text-blue-800">연결 링크 (선택)</label><input type="text" placeholder="클릭 시 이동할 URL" className="w-full p-3 bg-blue-50 rounded-lg outline-none font-bold text-sm h-12" value={nForm.link} onChange={e=>setNForm({...nForm, link:e.target.value})}/></div>
+                         </div>
+                         <div className="flex gap-2">
+                           <button type="button" onClick={saveNotice} className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-black">공지 저장</button>
+                           <button type="button" onClick={()=>setShowNForm(false)} className="flex-1 bg-slate-200 text-slate-700 py-3 rounded-xl font-black">취소</button>
+                         </div>
+                      </div>
+                    )}
+                 </div>
+
+                 <div className="bg-emerald-50 p-6 rounded-3xl border border-emerald-200 shadow-sm">
+                   <h4 className="font-black text-emerald-950 text-xl mb-4 flex items-center gap-2"><i className="fa-solid fa-list-ul text-emerald-600"></i> 메뉴 탭 이름 및 순서 변경</h4>
+                   <div className="space-y-2">
+                     {tabs.map((t, idx) => (
+                       <div key={t.id} className="flex items-center gap-3 bg-white p-3 rounded-xl border border-emerald-100 shadow-sm">
+                         <div className="flex flex-col gap-1">
+                            <button type="button" onClick={()=>moveTab(idx, -1)} disabled={idx===0} className="text-emerald-400 hover:text-emerald-700 disabled:opacity-30"><i className="fa-solid fa-chevron-up"></i></button>
+                            <button type="button" onClick={()=>moveTab(idx, 1)} disabled={idx===tabs.length-1} className="text-emerald-400 hover:text-emerald-700 disabled:opacity-30"><i className="fa-solid fa-chevron-down"></i></button>
+                         </div>
+                         <div className="bg-emerald-100 w-8 h-8 rounded-lg flex items-center justify-center font-black text-emerald-700">{idx+1}</div>
+                         <div className="flex-1">
+                           <span className="text-[10px] font-black text-emerald-500 uppercase">{t.id}</span>
+                           <input type="text" className="w-full p-2 bg-emerald-50 rounded-lg font-bold outline-none border border-transparent focus:border-emerald-300 text-sm" value={t.label} onChange={(e) => {
+                             const newTabs = [...tabs]; newTabs[idx].label = e.target.value; setTabs(newTabs);
+                           }} />
+                         </div>
+                       </div>
+                     ))}
+                   </div>
+                 </div>
+
+                 <div className="bg-indigo-50 p-8 rounded-3xl border border-indigo-200 shadow-sm relative overflow-hidden">
+                   <h4 className="font-black text-indigo-950 text-xl mb-3 flex items-center gap-2 relative z-10"><i className="fa-solid fa-link text-indigo-600"></i> 주식 데이터 연동 (구글 스프레드시트)</h4>
+                   <p className="text-sm font-bold text-indigo-700 mb-4 relative z-10">CSV 다운로드 링크가 아닌, <b>"웹에 게시"</b> 또는 <b>"뷰어 공유 링크"</b>를 그대로 넣으시면 알아서 데이터를 파싱합니다.</p>
+                   <input type="text" placeholder="https://docs.google.com/spreadsheets/d/..." className="w-full p-5 bg-white rounded-xl font-bold text-sm mb-6 outline-none border-2 border-indigo-200 focus:border-indigo-500 shadow-inner relative z-10" value={sKey} onChange={e=>setSKey(e.target.value)}/>
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 relative z-10">
+                     <div className="flex flex-col gap-1 font-bold"><span className="text-indigo-800 text-sm">데이터 출처 명시 텍스트</span><input type="text" className="p-3 bg-white rounded-lg outline-none border border-indigo-200 focus:border-indigo-400" value={pText} onChange={e=>setPText(e.target.value)}/></div>
+                   </div>
+                 </div>
+
+                 <div className="bg-yellow-50 p-8 rounded-3xl border border-yellow-200 shadow-sm">
+                   <h4 className="font-black text-yellow-950 text-xl mb-4 flex items-center gap-2"><i className="fa-solid fa-money-bill-transfer text-yellow-600"></i> 학생 간 송금 규칙 설정</h4>
+                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-4">
+                     <div className="flex flex-col gap-2"><span className="font-black text-sm text-yellow-800">최소 송금 가능액</span><input type="number" className="p-4 bg-white rounded-xl font-bold outline-none border-2 border-yellow-300 focus:border-yellow-500 text-lg shadow-inner" value={sTrMin} onChange={e=>setSTrMin(e.target.value)}/></div>
+                     <div className="flex flex-col gap-2"><span className="font-black text-sm text-yellow-800">최대 송금 가능액</span><input type="number" className="p-4 bg-white rounded-xl font-bold outline-none border-2 border-yellow-300 focus:border-yellow-500 text-lg shadow-inner" value={sTrMax} onChange={e=>setSTrMax(e.target.value)}/></div>
+                     <div className="flex flex-col gap-2"><span className="font-black text-sm text-yellow-800">송금 수수료 (발송자 부담)</span><input type="number" className="p-4 bg-white rounded-xl font-bold outline-none border-2 border-yellow-300 focus:border-yellow-500 text-lg shadow-inner" value={sTrFee} onChange={e=>setSTrFee(e.target.value)}/></div>
+                   </div>
+                   <div className="flex flex-col gap-2">
+                     <span className="font-black text-sm text-yellow-800">송금 창 별도 안내문 (학생들이 송금할 때 노란색 박스로 뜹니다)</span>
+                     <textarea placeholder="예: 알바비를 송금할 때는 꼭 이름을 한 번 더 확인하세요!" className="p-4 bg-white rounded-xl font-bold outline-none border-2 border-yellow-300 focus:border-yellow-500 h-20 shadow-inner" value={trNotice} onChange={e=>setTrNotice(e.target.value)} />
+                   </div>
+                 </div>
+                 
+                 <button type="submit" className="w-full py-5 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xl rounded-2xl shadow-xl transition-transform hover:-translate-y-1">모든 관리자 설정 저장하기</button>
+               </form>
+               
+               <div className="bg-red-50 p-8 rounded-3xl border-4 border-red-200 mt-12 relative overflow-hidden">
+                 <div className="absolute -right-4 -bottom-4 text-[150px] text-red-100 opacity-50 select-none pointer-events-none"><i className="fa-solid fa-triangle-exclamation"></i></div>
+                 <h4 className="font-black text-red-950 text-2xl mb-6 flex items-center gap-3 relative z-10"><i className="fa-solid fa-triangle-exclamation text-red-600"></i> 위험 구역 (초기화)</h4>
+                 <p className="font-bold text-red-600 mb-6 relative z-10">이곳의 버튼을 누르면 데이터가 영구적으로 삭제되며 되돌릴 수 없습니다. 신중하게 선택하세요.</p>
+                 
+                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 relative z-10">
+                   <button type="button" onClick={()=>{
+                     showConfirm('모든 학생의 자산(현금, 예금, 증권, 일반 기부금)을 0으로 만듭니다.\n정말 초기화하시겠습니까?', async ()=>{
+                       const updates = {};
+                       Object.values(dbData.users).forEach(u=>{
+                          updates[`economy_users/${u.id}/cash`] = 0; updates[`economy_users/${u.id}/deposit`] = 0; updates[`economy_users/${u.id}/generalDonated`] = 0; updates[`economy_users/${u.id}/portfolio`] = null;
+                       });
+                       await db.ref('/').update(updates); showAlert('학생 자산이 초기화되었습니다.');
+                     });
+                   }} className="w-full py-4 bg-red-600 hover:bg-red-700 text-white font-black rounded-xl shadow-lg transition-colors">1. 학생 자산 0으로 초기화</button>
+                   
+                   <button type="button" onClick={()=>{
+                     showConfirm('모든 거래 내역 히스토리를 삭제합니다.\n(자산 금액에는 영향을 주지 않습니다)', async ()=>{
+                       const updates = {};
+                       dbData.txs.forEach(t=> updates[`economy_transactions/${t.id}`] = null);
+                       await db.ref('/').update(updates); showAlert('내역이 전체 삭제되었습니다.');
+                     });
+                   }} className="w-full py-4 bg-white border-2 border-red-200 text-red-700 font-black rounded-xl hover:bg-red-50 transition-colors shadow-sm">2. 거래 내역 전체 삭제</button>
+                   
+                   <button type="button" onClick={()=>{
+                     showConfirm('상점의 모든 등록 상품과 학생들의 보관함 아이템을 완전히 비웁니다.', async ()=>{
+                       const updates = {};
+                       dbData.store.forEach(s=> updates[`economy_store_products/${s.id}`] = null);
+                       dbData.inventory.forEach(i=> updates[`economy_inventory/${i.id}`] = null);
+                       await db.ref('/').update(updates); showAlert('상점 및 보관함이 비워졌습니다.');
+                     });
+                   }} className="w-full py-4 bg-white border-2 border-red-200 text-red-700 font-black rounded-xl hover:bg-red-50 transition-colors shadow-sm">3. 상점 및 보관함 비우기</button>
+                 </div>
+               </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ============================================================================
+    // [6] 메인 애플리케이션 컴포넌트 (App)
+    // ============================================================================
+    function App() {
+      const [currentUser, setCurrentUser] = useState(null);
+      const [isDBLoaded, setIsDBLoaded] = useState(false);
+      const [bootProgress, setBootProgress] = useState(0);
+      const [isBooting, setIsBooting] = useState(true);
+      
+      const [dbData, setDbData] = useState({ users: {}, deposits: {}, txs: [], bank: [], store: [], inventory: [], stocks: [], jobs: [], settings: INITIAL_SETTINGS, goals: [], donations: [], itemDonations: [] });
+      const [view, setView] = useState('dashboard');
+      const [showLoginNotice, setShowLoginNotice] = useState(true);
+      
+      const [alertMsg, setAlertMsg] = useState(null);
+      const [confirmObj, setConfirmObj] = useState(null);
+
+      const showAlert = (message) => setAlertMsg({ message });
+      const showConfirm = (message, onConfirm) => setConfirmObj({ message, onConfirm });
+
+      const [lastActionTime, setLastActionTime] = useState(Date.now());
+      const [timeLeft, setTimeLeft] = useState(0);
+      const [isSessionActive, setIsSessionActive] = useState(false); 
+
+      // 로딩
+      useEffect(() => {
+        let timer;
+        if (isBooting) {
+          timer = setInterval(() => {
+            setBootProgress(p => {
+              if (p >= 95) return 95;
+              const next = p + Math.floor(Math.random() * 10) + 1;
+              return next > 95 ? 95 : next;
+            });
+          }, 150);
+        }
+        return () => clearInterval(timer);
+      }, [isBooting]);
+
+      useEffect(() => {
+        if (isDBLoaded) {
+          setBootProgress(100);
+          const t = setTimeout(() => setIsBooting(false), 800);
+          return () => clearTimeout(t);
+        }
+      }, [isDBLoaded]);
+
+      // DB
+      useEffect(() => {
+        const rootRef = db.ref('/');
+        const onDataChange = rootRef.on('value', (snap) => {
+          const val = snap.val() || {};
+          
+          if (!val.economy_users) {
+             const updates = {};
+             INITIAL_USERS.forEach(u => { updates[`economy_users/${u.id}`] = { ...u, cash: 0, deposit: 0, level: 1, generalDonated: 0, portfolio: {}, jobId: '', jobChecklist: {} }; });
+             INITIAL_BANK.forEach(p => updates[`economy_bank_products/${p.id}`] = p);
+             INITIAL_STORE.forEach(s => updates[`economy_store_products/${s.id}`] = s);
+             INITIAL_STOCKS.forEach(st => updates[`economy_stocks/${st.id}`] = st);
+             INITIAL_DONATION_GOALS.forEach(g => updates[`economy_donation_goals/${g.id}`] = g);
+             INITIAL_JOBS.forEach(j => updates[`economy_jobs/${j.id}`] = j);
+             updates[`economy_settings`] = INITIAL_SETTINGS;
+             db.ref().update(updates);
+          }
+
+          // 탭 강제 병합 (설정이 없어도 직업 탭이 뜨도록)
+          let currentTabs = val.economy_settings?.tabs || DEFAULT_TABS;
+          if (!currentTabs.find(t => t.id === 'jobs')) {
+             currentTabs = [...currentTabs, { id: 'jobs', label: '직업', order: 2 }];
+             currentTabs.sort((a,b)=>a.order-b.order);
+          }
+
+          setDbData({
+            users: val.economy_users || {},
+            deposits: val.economy_deposits || {},
+            txs: val.economy_transactions ? Object.values(val.economy_transactions).sort((a,b) => b.timestamp - a.timestamp) : [],
+            bank: val.economy_bank_products ? Object.values(val.economy_bank_products).sort((a,b) => a.days - b.days) : [],
+            store: val.economy_store_products ? Object.values(val.economy_store_products) : [],
+            inventory: val.economy_inventory ? Object.values(val.economy_inventory).sort((a,b) => b.purchasedAt - a.purchasedAt) : [],
+            stocks: val.economy_stocks ? Object.values(val.economy_stocks) : [],
+            jobs: val.economy_jobs ? Object.values(val.economy_jobs) : [],
+            goals: val.economy_donation_goals ? Object.values(val.economy_donation_goals) : [],
+            donations: val.economy_donations ? Object.values(val.economy_donations).sort((a,b) => b.timestamp - a.timestamp) : [],
+            itemDonations: val.economy_item_donations ? Object.values(val.economy_item_donations) : [],
+            settings: { ...INITIAL_SETTINGS, ...(val.economy_settings || {}), tabs: currentTabs }
+          });
+          setIsDBLoaded(true);
+        });
+        return () => rootRef.off('value', onDataChange);
+      }, []);
+
+      // 세션
+      useEffect(() => {
+        if (!currentUser || !isSessionActive) return;
+        const maxMs = (dbData.settings.sessionTimeMin || 10) * 60000;
+        
+        const updateTime = () => setLastActionTime(Date.now());
+        window.addEventListener('click', updateTime);
+        window.addEventListener('keydown', updateTime);
+        window.addEventListener('touchstart', updateTime);
+
+        const timer = setInterval(() => {
+          const remain = maxMs - (Date.now() - lastActionTime);
+          setTimeLeft(remain);
+          if (remain <= 0) {
+            setCurrentUser(null);
+            showAlert('보안을 위해 자동으로 로그아웃 되었습니다.');
+          }
+        }, 1000);
+
+        return () => {
+          clearInterval(timer);
+          window.removeEventListener('click', updateTime);
+          window.removeEventListener('keydown', updateTime);
+          window.removeEventListener('touchstart', updateTime);
+        };
+      }, [currentUser, lastActionTime, dbData.settings.sessionTimeMin, isSessionActive]);
+
+      const handleLogin = (id, u, useAuto, useSession) => {
+        setCurrentUser(id);
+        setIsSessionActive(useSession);
+        setLastActionTime(Date.now());
+        setView('dashboard');
+        setShowLoginNotice(true);
+        if (useAuto) localStorage.setItem('hh_auto_login', id);
+      };
+
+      const handleLogout = () => {
+        localStorage.removeItem('hh_auto_login');
+        setCurrentUser(null);
+        setIsSessionActive(false);
+      };
+
+      useEffect(() => {
+        const savedId = localStorage.getItem('hh_auto_login');
+        if (savedId && dbData.users[savedId] && !currentUser && isDBLoaded) {
+          setCurrentUser(savedId);
+          setIsSessionActive(false);
+        }
+      }, [isDBLoaded]);
+
+      const activeNotices = (dbData.settings.notices || []).filter(n => {
+        const now = Date.now();
+        return now >= n.startMs && now <= n.endMs;
+      });
+
+      if (isBooting || !isDBLoaded || !currentUser) {
+        return (
+          <div className="relative min-h-screen bg-[#F5F3FF]">
+            {isDBLoaded && <LoginView users={Object.values(dbData.users)} onLogin={handleLogin} showAlert={showAlert} />}
+            
+            {(isBooting || !isDBLoaded) && (
+              <div className="fixed inset-0 z-[999] bg-purple-950/80 backdrop-blur-md flex flex-col items-center justify-center transition-opacity duration-500">
+                <div className="flex flex-col items-center animate-in slide-in-from-bottom-8 fade-in duration-1000">
+                  <i className="fa-solid fa-graduation-cap text-6xl text-white mb-6 animate-bounce"></i>
+                  <h1 className="text-2xl sm:text-3xl font-black text-white text-center tracking-tight mb-2">HH 경제교실에 오신 것을 환영합니다!</h1>
+                  <p className="text-lg text-purple-300 font-bold mb-12">무결성 검증 및 실시간 연결을 시도합니다...</p>
+                </div>
+                <div className="flex flex-col items-center animate-in fade-in zoom-in duration-700 delay-300 fill-mode-both">
+                  <i className="fa-solid fa-circle-notch fa-spin text-4xl text-fuchsia-400 mb-6"></i>
+                  <div className="w-64 bg-purple-900 rounded-full h-3 mb-4 overflow-hidden border border-purple-700 shadow-inner">
+                    <div className="bg-gradient-to-r from-fuchsia-500 to-purple-500 h-full rounded-full transition-all duration-300 ease-out" style={{ width: `${bootProgress}%` }}></div>
+                  </div>
+                  <p className="text-xl text-purple-200 font-extrabold tracking-widest">Loading {bootProgress}%...</p>
+                </div>
+              </div>
+            )}
+
+            <Modal isOpen={!!alertMsg} title="알림" iconStr="fa-solid fa-circle-exclamation" color="purple" onClose={() => setAlertMsg(null)}>
+              <form onSubmit={(e) => { e.preventDefault(); setAlertMsg(null); }}>
+                <p className="text-purple-800 font-bold text-center leading-relaxed whitespace-pre-wrap mb-8 text-lg">{alertMsg?.message}</p>
+                <button type="submit" autoFocus className="w-full bg-purple-600 hover:bg-purple-700 text-white font-black py-4 rounded-2xl shadow-lg">확인</button>
+              </form>
+            </Modal>
+          </div>
+        );
+      }
+
+      const myUser = dbData.users[currentUser];
+      const realStockValue = Object.entries(myUser.portfolio || {}).reduce((acc, [sId, pData]) => {
+        const st = dbData.stocks.find(s => s.id === sId);
+        return acc + (pData.qty * (st?.currentPrice || pData.avgPrice));
+      }, 0);
+      const myTotalAssets = (myUser.cash || 0) + (myUser.deposit || 0) + realStockValue;
+
+      const warnMin = dbData.settings.sessionWarnMin || 2;
+      const isWarn = isSessionActive && timeLeft > 0 && timeLeft <= warnMin * 60000;
+
+      const navItems = [...dbData.settings.tabs].sort((a,b)=>a.order-b.order);
+
+      return (
+        <div className="min-h-screen bg-[#F5F3FF] text-purple-950 font-sans pb-24">
+          <Modal isOpen={!!alertMsg} title="알림" iconStr="fa-solid fa-circle-exclamation" color="purple" onClose={() => setAlertMsg(null)}>
+            <form onSubmit={(e) => { e.preventDefault(); setAlertMsg(null); }}>
+              <p className="text-purple-800 font-bold text-center leading-relaxed whitespace-pre-wrap mb-8 text-lg">{alertMsg?.message}</p>
+              <button type="submit" autoFocus className="w-full bg-purple-600 hover:bg-purple-700 text-white font-black py-4 rounded-2xl shadow-lg">확인</button>
+            </form>
+          </Modal>
+
+          <Modal isOpen={!!confirmObj} title="확인이 필요합니다" iconStr="fa-solid fa-circle-question" color="fuchsia" onClose={() => setConfirmObj(null)}>
+            <form onSubmit={(e) => { e.preventDefault(); confirmObj.onConfirm(); setConfirmObj(null); }}>
+              <p className="text-fuchsia-900 font-bold text-center leading-relaxed whitespace-pre-wrap mb-8 text-lg">{confirmObj?.message}</p>
+              <div className="flex gap-4">
+                <button type="submit" autoFocus className="flex-1 bg-fuchsia-600 hover:bg-fuchsia-700 text-white font-black py-4 rounded-2xl shadow-lg">진행</button>
+                <button type="button" onClick={() => setConfirmObj(null)} className="flex-1 bg-white border-2 border-fuchsia-200 text-fuchsia-700 font-black py-4 rounded-2xl hover:bg-fuchsia-50">취소</button>
+              </div>
+            </form>
+          </Modal>
+
+          <Modal isOpen={showLoginNotice && activeNotices.length > 0} title="새로운 공지사항" iconStr="fa-solid fa-bullhorn" color="indigo" onClose={() => setShowLoginNotice(false)}>
+            <div className="space-y-4">
+               {activeNotices.map((n, idx) => (
+                 <a key={idx} href={n.link||'#'} target={n.link?"_blank":""} className="block p-5 rounded-2xl shadow-sm text-white hover:scale-[1.02] transition-transform" style={{background: n.color}}>
+                   <h4 className="font-black text-xl mb-2 drop-shadow-md">{n.title}</h4>
+                   <p className="font-bold whitespace-pre-wrap opacity-90">{n.content}</p>
+                 </a>
+               ))}
+               <button type="button" onClick={()=>setShowLoginNotice(false)} autoFocus className="w-full mt-4 bg-indigo-100 text-indigo-800 font-black py-4 rounded-2xl hover:bg-indigo-200">확인했습니다</button>
+            </div>
+          </Modal>
+
+          {activeNotices.length > 0 && (
+             <div className="w-full bg-indigo-600 text-white font-bold text-sm py-2 shadow-md marquee-container cursor-pointer z-50 relative" onClick={() => setShowLoginNotice(true)}>
+               <div className="marquee-content">
+                 {activeNotices.map((n, i) => (
+                   <span key={i} className="mx-8"><i className="fa-solid fa-bell text-yellow-300 mr-2"></i>[{n.title}] {n.content.replace(/\n/g, ' ')}</span>
+                 ))}
+                 {activeNotices.map((n, i) => (
+                   <span key={i+'_clone'} className="mx-8"><i className="fa-solid fa-bell text-yellow-300 mr-2"></i>[{n.title}] {n.content.replace(/\n/g, ' ')}</span>
+                 ))}
+               </div>
+             </div>
+          )}
+
+          <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-xl border-b-2 border-purple-100 shadow-sm">
+            <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+              <div className="flex items-center gap-6">
+                <div className="flex items-center gap-3 cursor-pointer" onClick={() => setView('dashboard')}>
+                  <div className="w-10 h-10 bg-gradient-to-br from-purple-600 to-fuchsia-600 rounded-xl flex items-center justify-center shadow-lg"><i className="fa-solid fa-graduation-cap text-white text-lg"></i></div>
+                  <span className="text-xl sm:text-2xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-purple-800 to-fuchsia-700 hidden sm:block">HH 경제교실</span>
+                </div>
+                <nav className="hidden md:flex gap-2">
+                  {navItems.map(item => (
+                    <button key={item.id} onClick={() => setView(item.id)} className={`px-4 py-2 font-extrabold rounded-xl transition-all ${view === item.id ? 'bg-purple-600 text-white shadow-md' : 'text-purple-600 hover:bg-purple-100'}`}>
+                      {item.label}
+                    </button>
+                  ))}
+                  <button onClick={() => setView('settings')} className={`px-4 py-2 font-extrabold rounded-xl transition-all ${view === 'settings' ? 'bg-purple-600 text-white shadow-md' : 'text-purple-600 hover:bg-purple-100'}`}>
+                    <i className="fa-solid fa-gear"></i> 설정
+                  </button>
+                </nav>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3">
+                   {myUser.profileUrl ? (
+                      <img src={myUser.profileUrl} alt="profile" className="w-10 h-10 rounded-full object-cover shadow-sm border border-purple-200 hidden sm:block"/>
+                   ) : (
+                      <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 shadow-sm border border-purple-200 hidden sm:block">
+                         <i className="fa-solid fa-user"></i>
+                      </div>
+                   )}
+                   <div className="text-right hidden sm:block">
+                     <p className="text-sm font-black text-purple-900">{myUser.name}</p>
+                     {isSessionActive && (
+                       <p className={`text-xs font-bold flex items-center gap-1 justify-end mt-0.5 ${isWarn ? 'text-red-500 animate-pulse' : 'text-purple-400'}`}>
+                         <i className="fa-solid fa-lock text-[10px]"></i>
+                         {Math.floor(timeLeft/60000)}:{String(Math.floor((timeLeft%60000)/1000)).padStart(2,'0')}
+                         {isWarn && <button onClick={() => setLastActionTime(Date.now())} className="ml-1 bg-red-100 text-red-600 px-1.5 py-0.5 rounded text-[10px] hover:bg-red-200">연장</button>}
+                       </p>
+                     )}
+                   </div>
+                </div>
+                <button onClick={handleLogout} className="p-2.5 text-purple-400 hover:text-white bg-purple-50 hover:bg-rose-500 rounded-xl transition-colors"><i className="fa-solid fa-arrow-right-from-bracket text-lg"></i></button>
+              </div>
+            </div>
+            <div className="md:hidden flex overflow-x-auto p-2 gap-2 bg-purple-50 border-t border-purple-100 scrollbar-hide">
+              {navItems.map(item => (
+                <button key={item.id} onClick={() => setView(item.id)} className={`whitespace-nowrap px-4 py-2 text-sm font-extrabold rounded-xl ${view === item.id ? 'bg-purple-600 text-white' : 'text-purple-600'}`}>
+                   {item.label}
+                </button>
+              ))}
+              <button onClick={() => setView('settings')} className={`whitespace-nowrap px-4 py-2 text-sm font-extrabold rounded-xl ${view === 'settings' ? 'bg-purple-600 text-white' : 'text-purple-600'}`}>설정</button>
+            </div>
+          </header>
+
+          <main className="max-w-7xl mx-auto px-4 py-8 space-y-8 relative z-10">
+            {view === 'dashboard' && (
+              <div className="relative bg-gradient-to-br from-purple-700 via-purple-600 to-fuchsia-600 rounded-[2.5rem] p-8 sm:p-10 text-white shadow-2xl overflow-hidden animate-in zoom-in-95">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-white opacity-10 rounded-full blur-3xl -mr-16 -mt-16"></div>
+                <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-end gap-8">
+                  <div>
+                    <div className="flex items-center gap-3 mb-4">
+                      <p className="text-2xl font-bold opacity-90">{myUser.name}의 자산</p>
+                      {myUser.role === 'student' && <div className="bg-white/20 backdrop-blur-md px-3 py-1 rounded-full text-sm font-black flex items-center gap-1"><i className="fa-solid fa-trophy text-yellow-300"></i> 레벨 {myUser.level || 1}</div>}
+                    </div>
+                    <h2 className="text-5xl sm:text-7xl font-black tracking-tighter mb-2 drop-shadow-lg">{formatMoney(myTotalAssets)}</h2>
+                    <p className="text-purple-200 font-bold">총 자산 평가금액</p>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3 w-full md:w-auto">
+                    {[{l:'현금', v:myUser.cash, i:'fa-wallet'}, {l:'예금', v:myUser.deposit, i:'fa-piggy-bank'}, {l:'증권', v:realStockValue, i:'fa-chart-line'}].map(a => (
+                      <div key={a.l} className="bg-white/10 backdrop-blur-md border border-white/20 p-4 rounded-3xl text-center md:text-left md:min-w-[120px]">
+                        <p className="text-xs font-extrabold text-purple-100 flex items-center justify-center md:justify-start gap-1 mb-2"><i className={`fa-solid ${a.i}`}></i> {a.l}</p>
+                        <p className="text-lg md:text-xl font-black">{formatMoney(a.v)}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {view === 'dashboard' && <DashboardView assets={myUser} dbData={dbData} db={db} showAlert={showAlert} showConfirm={showConfirm} setGlobalView={setView} />}
+            {view === 'jobs' && <JobsView assets={myUser} dbData={dbData} db={db} showAlert={showAlert} showConfirm={showConfirm} />}
+            {view === 'invest' && <InvestView assets={myUser} dbData={dbData} db={db} showAlert={showAlert} showConfirm={showConfirm} />}
+            {view === 'bank' && <BankView assets={myUser} dbData={dbData} db={db} showAlert={showAlert} showConfirm={showConfirm} />}
+            {view === 'store' && <StoreView assets={myUser} dbData={dbData} db={db} showAlert={showAlert} showConfirm={showConfirm} />}
+            {view === 'donate' && <DonateView assets={myUser} dbData={dbData} db={db} showAlert={showAlert} showConfirm={showConfirm} />}
+            {view === 'settings' && <SettingsView assets={myUser} dbData={dbData} db={db} showAlert={showAlert} showConfirm={showConfirm} />}
+          </main>
+        </div>
+      );
+    }
+
+    // ============================================================================
+    // [7] React 렌더링 부착
+    // ============================================================================
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
