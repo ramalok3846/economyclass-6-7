@@ -69,6 +69,10 @@
       transferMin: 0, transferMax: 0, transferFee: 0, transferNotice: '', 
       isStatsPublic: true, tabs: DEFAULT_TABS, notices: [],
       twoRowMenu: false, // 메뉴 2줄 보기 옵션 추가
+      className: 'HH 경제교실', siteTitle: 'HH 경제교실', classNameApplyTime: '', prevClassName: 'HH 경제교실', prevSiteTitle: 'HH 경제교실',
+      classNameChangeNoticeMode: 'none', // 이름 변경 알림 방식: 'none', 'notice', 'popup'
+      faviconMode: 'default', // 파비콘 방식: 'default', 'builtin', 'custom'
+      customFaviconUrl: '', // 커스텀 파비콘 URL
       boardsConfig: {
         isActive: true,
         links: [
@@ -200,7 +204,7 @@
     // ============================================================================
     
     // --- [1] 로그인 화면 ---
-    function LoginView({ onLogin, users, showAlert }) {
+    function LoginView({ onLogin, users, showAlert, displayClassName }) {
       const [selectedUser, setSelectedUser] = useState(null); const [password, setPassword] = useState('');
       const [useAuto, setUseAuto] = useState(false); const [useSession, setUseSession] = useState(true);
       const [isLoggingIn, setIsLoggingIn] = useState(false); const [isUserModalOpen, setIsUserModalOpen] = useState(false);
@@ -219,7 +223,7 @@
           <div className="bg-white rounded-[2.5rem] p-8 sm:p-10 shadow-2xl w-full max-w-md animate-zoom-in border-4 border-purple-200/50">
             <div className="flex flex-col items-center mb-8">
               <div className="w-20 h-20 bg-gradient-to-tr from-fuchsia-600 to-purple-600 rounded-3xl flex items-center justify-center shadow-xl mb-4 text-white"><i className="fa-solid fa-graduation-cap text-4xl"></i></div>
-              <h1 className="text-3xl font-black text-purple-950 text-center tracking-tight">HH 경제교실</h1>
+              <h1 className="text-3xl font-black text-purple-950 text-center tracking-tight">{displayClassName || 'HH 경제교실'}</h1>
               <p className="text-purple-500 font-bold text-center mt-2">이름을 선택하고 로그인하세요.</p>
             </div>
             {!selectedUser ? (
@@ -1588,6 +1592,14 @@
       const [showNForm, setShowNForm] = useState(false);
       const [twoRowMenu, setTwoRowMenu] = useState(dbData.settings?.twoRowMenu || false);
 
+      const [cName, setCName] = useState(dbData.settings?.className || 'HH 경제교실');
+      const [sTitle, setSTitle] = useState(dbData.settings?.siteTitle || 'HH 경제교실');
+      const [cTime, setCTime] = useState(dbData.settings?.classNameApplyTime || '');
+      const [syncTitle, setSyncTitle] = useState(dbData.settings?.siteTitle ? dbData.settings.siteTitle === dbData.settings.className : true);
+      const [cNoticeMode, setCNoticeMode] = useState(dbData.settings?.classNameChangeNoticeMode || 'none');
+      const [favMode, setFavMode] = useState(dbData.settings?.faviconMode || 'default');
+      const [favUrl, setFavUrl] = useState(dbData.settings?.customFaviconUrl || '');
+
       const moveTab = (idx, dir) => {
         if (idx + dir < 0 || idx + dir >= tabs.length) return;
         const newTabs = [...tabs]; const temp = newTabs[idx]; newTabs[idx] = newTabs[idx + dir]; newTabs[idx + dir] = temp; setTabs(newTabs);
@@ -1595,7 +1607,19 @@
 
       const saveAdminSettings = async (e) => {
         e.preventDefault(); const updates = {};
-        updates['economy_settings'] = { ...dbData.settings, googleSheetUrl: sKey, providerText: pText, transferMin: parseInt(sTrMin)||0, transferMax: parseInt(sTrMax)||0, transferFee: parseInt(sTrFee)||0, transferNotice: trNotice, tabs: tabs.map((t, i) => ({ ...t, order: i+1 })), notices: notices, twoRowMenu };
+        
+        let prevCName = dbData.settings.className || 'HH 경제교실';
+        let prevSTitle = dbData.settings.siteTitle || 'HH 경제교실';
+        if (cTime && new Date(cTime).getTime() > Date.now()) {
+           if (dbData.settings.classNameApplyTime && new Date(dbData.settings.classNameApplyTime).getTime() > Date.now()) {
+               prevCName = dbData.settings.prevClassName || prevCName;
+               prevSTitle = dbData.settings.prevSiteTitle || prevSTitle;
+           }
+        } else {
+           prevCName = cName; prevSTitle = syncTitle ? cName : sTitle;
+        }
+
+        updates['economy_settings'] = { ...dbData.settings, googleSheetUrl: sKey, providerText: pText, transferMin: parseInt(sTrMin)||0, transferMax: parseInt(sTrMax)||0, transferFee: parseInt(sTrFee)||0, transferNotice: trNotice, tabs: tabs.map((t, i) => ({ ...t, order: i+1 })), notices: notices, twoRowMenu, className: cName, siteTitle: syncTitle ? cName : sTitle, classNameApplyTime: cTime, prevClassName: prevCName, prevSiteTitle: prevSTitle, classNameChangeNoticeMode: cNoticeMode, faviconMode: favMode, customFaviconUrl: favUrl };
         await db.ref('/').update(updates); showAlert('설정 저장 완료! (새로고침 시 메뉴 레이아웃 적용)');
       };
 
@@ -1659,6 +1683,60 @@
                <h2 className="text-2xl font-black text-indigo-950 mb-6 flex items-center gap-3"><div className="bg-indigo-100 p-2 rounded-xl text-indigo-600"><i className="fa-solid fa-sliders"></i></div> 관리자 고급 설정</h2>
                <form onSubmit={saveAdminSettings} className="space-y-8">
                  
+                 <div className="bg-fuchsia-50 p-6 rounded-3xl border border-fuchsia-200 shadow-sm">
+                   <h4 className="font-black text-fuchsia-950 text-xl mb-4 flex items-center gap-2"><i className="fa-solid fa-school text-fuchsia-600"></i> 경제교실 이름 관리</h4>
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                     <div className="flex flex-col gap-2">
+                       <span className="font-black text-sm text-fuchsia-800">경제교실 이름</span>
+                       <input type="text" className="p-4 bg-white rounded-xl font-bold outline-none border border-fuchsia-200 focus:border-fuchsia-400 shadow-inner" value={cName} onChange={e=>{setCName(e.target.value); if(syncTitle) setSTitle(e.target.value);}}/>
+                     </div>
+                     <div className="flex flex-col gap-2">
+                       <span className="font-black text-sm text-fuchsia-800">변경 적용 시간 (선택사항)</span>
+                       <input type="datetime-local" className="p-4 bg-white rounded-xl font-bold outline-none border border-fuchsia-200 focus:border-fuchsia-400" value={cTime} onChange={e=>setCTime(e.target.value)}/>
+                       <span className="text-xs text-fuchsia-600 font-bold">비워두면 즉시 적용됩니다.</span>
+                     </div>
+                     <div className="flex flex-col gap-2 col-span-full">
+                       <span className="font-black text-sm text-fuchsia-800">브라우저 사이트 제목 (탭 이름)</span>
+                       <label className="flex items-center gap-2 font-bold text-sm text-fuchsia-900 mb-2 cursor-pointer">
+                         <input type="checkbox" checked={syncTitle} onChange={e=>{setSyncTitle(e.target.checked); if(e.target.checked) setSTitle(cName);}} className="w-5 h-5 accent-fuchsia-600"/>
+                         경제교실 이름과 동일하게 설정
+                       </label>
+                       <input type="text" disabled={syncTitle} className="p-4 bg-white rounded-xl font-bold outline-none border border-fuchsia-200 focus:border-fuchsia-400 disabled:bg-fuchsia-100 disabled:text-gray-400 shadow-inner" value={sTitle} onChange={e=>setSTitle(e.target.value)}/>
+                     </div>
+                     <div className="flex flex-col gap-2 col-span-full border-t border-fuchsia-200 pt-4">
+                       <span className="font-black text-sm text-fuchsia-800">이름 변경 알림 방식 (변경 예정 시간이 있을 때)</span>
+                       <div className="flex flex-col sm:flex-row gap-5 bg-white p-4 rounded-xl shadow-inner border border-fuchsia-200">
+                         <label className="flex items-center gap-2 cursor-pointer font-bold text-sm text-fuchsia-900"><input type="radio" checked={cNoticeMode==='none'} onChange={()=>setCNoticeMode('none')} className="accent-fuchsia-600 w-4 h-4"/> 예고 없음</label>
+                         <label className="flex items-center gap-2 cursor-pointer font-bold text-sm text-fuchsia-900"><input type="radio" checked={cNoticeMode==='notice'} onChange={()=>setCNoticeMode('notice')} className="accent-fuchsia-600 w-4 h-4"/> 공지사항 띠지 표시</label>
+                         <label className="flex items-center gap-2 cursor-pointer font-bold text-sm text-fuchsia-900"><input type="radio" checked={cNoticeMode==='popup'} onChange={()=>setCNoticeMode('popup')} className="accent-fuchsia-600 w-4 h-4"/> 접속 시 팝업 띄우기</label>
+                       </div>
+                     </div>
+                   </div>
+                 </div>
+
+                 <div className="bg-purple-50 p-6 rounded-3xl border border-purple-200 shadow-sm mt-4">
+                   <h4 className="font-black text-purple-950 text-xl mb-4 flex items-center gap-2"><i className="fa-solid fa-icons text-purple-600"></i> 사이트 아이콘 (파비콘) 설정</h4>
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                     <div className="flex flex-col gap-3">
+                        <label className="flex items-center gap-2 cursor-pointer font-bold text-sm text-purple-900"><input type="radio" checked={favMode==='default'} onChange={()=>setFavMode('default')} className="accent-purple-600 w-4 h-4"/> 브라우저 기본 (비우기)</label>
+                        <label className="flex items-center gap-2 cursor-pointer font-bold text-sm text-purple-900"><input type="radio" checked={favMode==='builtin'} onChange={()=>setFavMode('builtin')} className="accent-purple-600 w-4 h-4"/> 내장 보라색 학사모 아이콘</label>
+                        <label className="flex items-center gap-2 cursor-pointer font-bold text-sm text-purple-900"><input type="radio" checked={favMode==='custom'} onChange={()=>setFavMode('custom')} className="accent-purple-600 w-4 h-4"/> 커스텀 이미지 (업로드)</label>
+                     </div>
+                     <div className="flex flex-col gap-2">
+                        {favMode === 'custom' && (
+                          <>
+                            <span className="font-black text-sm text-purple-800">커스텀 파비콘 (URL 또는 업로드)</span>
+                            <div className="flex gap-2 items-center">
+                               <input type="text" className="flex-1 p-3 bg-white rounded-xl font-bold outline-none border border-purple-200 focus:border-purple-400" value={favUrl} onChange={e=>setFavUrl(e.target.value)}/>
+                               <label className="bg-purple-100 text-purple-700 px-3 py-3 rounded-xl font-bold cursor-pointer whitespace-nowrap"><i className="fa-solid fa-upload"></i><input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageCompression(e, setFavUrl)} /></label>
+                            </div>
+                            {favUrl && <div className="mt-2 flex items-center gap-2"><span className="text-xs font-bold text-gray-500">미리보기:</span> <img src={favUrl} className="w-8 h-8 rounded border"/></div>}
+                          </>
+                        )}
+                     </div>
+                   </div>
+                 </div>
+
                  <div className="bg-blue-50 p-6 rounded-3xl border border-blue-200">
                     <div className="flex justify-between items-center mb-4"><h4 className="font-black text-blue-950 text-xl"><i className="fa-solid fa-bullhorn text-blue-600"></i> 글로벌 공지사항 관리</h4><button type="button" onClick={()=>{setNForm({id:'', title:'', content:'', start:'', end:'', color:'#3b82f6', link:''}); setShowNForm(true);}} className="bg-blue-600 hover:bg-blue-700 transition-colors text-white px-4 py-2 rounded-lg font-bold">+ 새 공지</button></div>
                     <div className="space-y-3">
@@ -1800,6 +1878,7 @@
       const [dbData, setDbData] = useState({ users: {}, deposits: {}, txs: [], bank: [], store: [], inventory: [], stocks: [], jobs: [], settings: INITIAL_SETTINGS, goals: [], donations: [], itemDonations: [] });
       const [view, setView] = useState('dashboard');
       const [showLoginNotice, setShowLoginNotice] = useState(true);
+      const [showNamePopup, setShowNamePopup] = useState(false);
       
       const [alertMsg, setAlertMsg] = useState(null);
       const [confirmObj, setConfirmObj] = useState(null);
@@ -1950,15 +2029,56 @@
 
       const activeNotices = (dbData.settings.notices || []).filter(n => { const now = Date.now(); return now >= n.startMs && now <= n.endMs; });
 
+      const s = dbData.settings || {};
+      let displayClassName = s.className || 'HH 경제교실';
+      let displaySiteTitle = s.siteTitle || displayClassName;
+      const isNameChanging = s.classNameApplyTime && new Date(s.classNameApplyTime).getTime() > Date.now();
+
+      if (isNameChanging) {
+          displayClassName = s.prevClassName || 'HH 경제교실';
+          displaySiteTitle = s.prevSiteTitle || displayClassName;
+      }
+
+      useEffect(() => {
+        document.title = displaySiteTitle;
+        
+        let link = document.querySelector("link[rel~='icon']");
+        if (!link) { link = document.createElement('link'); link.rel = 'icon'; document.head.appendChild(link); }
+        
+        if (s.faviconMode === 'builtin') {
+            link.href = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='25' fill='%23a855f7'/><path fill='white' d='M83.3 35.8L50 19.2 16.7 35.8l33.3 16.6 33.3-16.6zm0 14.2v16.7c0 5-14.9 9.1-33.3 9.1S16.7 71.7 16.7 66.7V50L50 66.6l33.3-16.6z'/></svg>";
+        } else if (s.faviconMode === 'custom' && s.customFaviconUrl) {
+            link.href = s.customFaviconUrl;
+        } else {
+            link.href = '/favicon.ico'; // default
+        }
+      }, [displaySiteTitle, s.faviconMode, s.customFaviconUrl]);
+
+      useEffect(() => {
+        if (isDBLoaded && isNameChanging && s.classNameChangeNoticeMode === 'popup') {
+           const dismissed = sessionStorage.getItem(`namePopup_${s.classNameApplyTime}`);
+           if (!dismissed) setShowNamePopup(true);
+        }
+      }, [isDBLoaded, isNameChanging, s.classNameChangeNoticeMode, s.classNameApplyTime]);
+
+      const combinedNotices = [...activeNotices];
+      if (isNameChanging && s.classNameChangeNoticeMode === 'notice') {
+          combinedNotices.unshift({
+             title: '경제교실 이름 변경 예정 안내',
+             content: `${formatDate(s.classNameApplyTime)} 부로 교실 이름이 [${s.className}]으로 변경됩니다!`,
+             color: '#e11d48'
+          });
+      }
+
       if (isBooting || !isDBLoaded || !currentUser || !dbData.users[currentUser]) {
         return (
           <div className="relative min-h-screen bg-[#F5F3FF]">
-            {isDBLoaded && <LoginView users={Object.values(dbData.users)} onLogin={handleLogin} showAlert={showAlert} />}
+            {isDBLoaded && <LoginView users={Object.values(dbData.users)} onLogin={handleLogin} showAlert={showAlert} displayClassName={displayClassName} />}
             {(isBooting || !isDBLoaded) && (
               <div className="fixed inset-0 z-[999] bg-purple-950/80 backdrop-blur-md flex flex-col items-center justify-center transition-opacity duration-500">
                 <div className="flex flex-col items-center animate-in slide-in-from-bottom-8 fade-in duration-1000">
                   <i className="fa-solid fa-graduation-cap text-6xl text-white mb-6 animate-bounce"></i>
-                  <h1 className="text-2xl sm:text-3xl font-black text-white text-center tracking-tight mb-2">HH 경제교실에 오신 것을 환영합니다!</h1>
+                  <h1 className="text-2xl sm:text-3xl font-black text-white text-center tracking-tight mb-2">{displayClassName}에 오신 것을 환영합니다!</h1>
                   <p className="text-lg text-purple-300 font-bold mb-12">무결성 검증 및 실시간 연결을 시도합니다...</p>
                 </div>
                 <div className="flex flex-col items-center animate-in fade-in zoom-in duration-700 delay-300 fill-mode-both">
@@ -1995,19 +2115,21 @@
             </form>
           </Modal>
 
-          <Modal isOpen={!!confirmObj} title="확인이 필요합니다" iconStr="fa-solid fa-circle-question" color="fuchsia" onClose={() => setConfirmObj(null)}>
-            <form onSubmit={(e) => { e.preventDefault(); confirmObj.onConfirm(); setConfirmObj(null); }}>
-              <p className="text-fuchsia-900 font-bold text-center leading-relaxed whitespace-pre-wrap mb-8 text-lg">{confirmObj?.message}</p>
-              <div className="flex gap-4">
-                <button type="submit" autoFocus className="flex-1 bg-fuchsia-600 hover:bg-fuchsia-700 text-white font-black py-4 rounded-2xl shadow-lg">진행</button>
-                <button type="button" onClick={() => setConfirmObj(null)} className="flex-1 bg-white border-2 border-fuchsia-200 text-fuchsia-700 font-black py-4 rounded-2xl hover:bg-fuchsia-50">취소</button>
-              </div>
-            </form>
+          <Modal isOpen={showNamePopup} title="중요 사전 안내" iconStr="fa-solid fa-bullhorn" color="rose" onClose={() => { setShowNamePopup(false); sessionStorage.setItem(`namePopup_${s.classNameApplyTime}`, 'true'); }}>
+            <div className="text-center space-y-4">
+              <div className="text-6xl text-rose-500 mb-4 animate-bounce"><i className="fa-solid fa-clock"></i></div>
+              <h3 className="text-2xl font-black text-rose-900">경제교실 이름 변경 예정</h3>
+              <p className="text-lg font-bold text-gray-700 mt-2">
+                <span className="text-rose-600 font-black">{formatDate(s.classNameApplyTime)}</span> 부로<br/>
+                우리 교실의 이름이 <span className="text-rose-600 font-black bg-rose-50 px-2 py-1 rounded">[{s.className}]</span>(으)로 변경됩니다!
+              </p>
+              <button onClick={() => { setShowNamePopup(false); sessionStorage.setItem(`namePopup_${s.classNameApplyTime}`, 'true'); }} className="mt-8 w-full py-4 bg-rose-600 text-white rounded-2xl font-black shadow-lg hover:bg-rose-700 transition-colors">확인했습니다</button>
+            </div>
           </Modal>
 
-          <Modal isOpen={showLoginNotice && activeNotices.length > 0} title="새로운 공지사항" iconStr="fa-solid fa-bullhorn" color="indigo" onClose={() => setShowLoginNotice(false)}>
+          <Modal isOpen={showLoginNotice && combinedNotices.length > 0} title="새로운 공지사항" iconStr="fa-solid fa-bullhorn" color="indigo" onClose={() => setShowLoginNotice(false)}>
             <div className="space-y-4">
-               {activeNotices.map((n, idx) => (
+               {combinedNotices.map((n, idx) => (
                  <a key={idx} href={n.link||'#'} target={n.link?"_blank":""} className="block p-5 rounded-2xl shadow-sm text-white hover:scale-[1.02] transition-transform" style={{background: n.color}}>
                    <h4 className="font-black text-xl mb-2 drop-shadow-md">{n.title}</h4>
                    <p className="font-bold whitespace-pre-wrap opacity-90">{n.content}</p>
@@ -2017,11 +2139,11 @@
             </div>
           </Modal>
 
-          {activeNotices.length > 0 && (
+          {combinedNotices.length > 0 && (
              <div className="w-full bg-indigo-600 text-white font-bold text-sm py-2 shadow-md marquee-container cursor-pointer z-50 relative" onClick={() => setShowLoginNotice(true)}>
                <div className="marquee-content">
-                 {activeNotices.map((n, i) => (<span key={i} className="mx-8"><i className="fa-solid fa-bell text-yellow-300 mr-2"></i>[{n.title}] {n.content.replace(/\n/g, ' ')}</span>))}
-                 {activeNotices.map((n, i) => (<span key={i+'_clone'} className="mx-8"><i className="fa-solid fa-bell text-yellow-300 mr-2"></i>[{n.title}] {n.content.replace(/\n/g, ' ')}</span>))}
+                 {combinedNotices.map((n, i) => (<span key={i} className="mx-8"><i className="fa-solid fa-bell text-yellow-300 mr-2"></i>[{n.title}] {n.content.replace(/\n/g, ' ')}</span>))}
+                 {combinedNotices.map((n, i) => (<span key={i+'_clone'} className="mx-8"><i className="fa-solid fa-bell text-yellow-300 mr-2"></i>[{n.title}] {n.content.replace(/\n/g, ' ')}</span>))}
                </div>
              </div>
           )}
@@ -2032,7 +2154,7 @@
               <div className="flex items-center justify-between w-full md:w-auto gap-6 shrink-0">
                 <div className="flex items-center gap-3 cursor-pointer" onClick={() => setView('dashboard')}>
                   <div className="w-10 h-10 bg-gradient-to-br from-purple-600 to-fuchsia-600 rounded-xl flex items-center justify-center shadow-lg"><i className="fa-solid fa-graduation-cap text-white text-lg"></i></div>
-                  <span className="text-xl sm:text-2xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-purple-800 to-fuchsia-700 hidden sm:block">HH 경제교실</span>
+                  <span className="text-xl sm:text-2xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-purple-800 to-fuchsia-700 hidden sm:block">{displayClassName}</span>
                 </div>
                 
                 {/* 모바일 우측 상단 로그아웃/유저 정보 */}
