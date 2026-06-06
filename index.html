@@ -56,16 +56,16 @@
     if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
 
     // ============================================================================
-    // [2] 지정한 도메인만 허용하는 방어막 (App Check)
+    // [2] 지정한 도메인만 허용하는 방어막 (App Check) - compat 버전용 수정!
     // ============================================================================
     const appCheck = firebase.appCheck();
     appCheck.activate(
-      new firebase.appCheck.ReCaptchaV3Provider('6LePGBAtAAAAAJUzKogrWuXB6k6Kb2j4EjTO3uOM'),
+      '6LePGBAtAAAAAJUzKogrWuXB6k6Kb2j4EjTO3uOM',
       true
     );
 
     const db = firebase.database();
-
+    
     // ============================================================================
     // [3] 유틸리티
     // ============================================================================
