@@ -65,7 +65,63 @@
     );
 
     const db = firebase.database();
-    
+
+    // ============================================================================
+    // [2.5] 초기 데이터
+    // ============================================================================
+    const DEFAULT_TABS = [
+      { id: 'dashboard', label: '대시보드', order: 1 },
+      { id: 'jobs', label: '직업', order: 2 },
+      { id: 'invest', label: '투자(주식)', order: 3 },
+      { id: 'bank', label: '은행', order: 4 },
+      { id: 'store', label: '상점/보관함', order: 5 },
+      { id: 'fines', label: '벌금', order: 6 },
+      { id: 'donate', label: '기부 센터', order: 7 },
+      { id: 'boards', label: '게시판', order: 8 }
+    ];
+
+    const INITIAL_SETTINGS = {
+      googleSheetUrl: '', stockLastUpdated: 0,
+      conversion: { divideBy: 100, roundMode: 'round', decimals: 0 },
+      providerText: 'Google Finance', sessionTimeMin: 10, sessionWarnMin: 2,
+      transferMin: 0, transferMax: 0, transferFee: 0, transferNotice: '', transferFeePayer: 'sender',
+      isStatsPublic: true, tabs: DEFAULT_TABS, notices: [],
+      twoRowMenu: false,
+      className: 'HH 경제교실', siteTitle: 'HH 경제교실', classNameApplyTime: '', prevClassName: 'HH 경제교실', prevSiteTitle: 'HH 경제교실',
+      classNameChangeNoticeMode: 'none',
+      faviconMode: 'default', customFaviconUrl: '',
+      boardsConfig: {
+        isActive: true,
+        links: [
+          { id: 'b1', title: '네이버 웨일 웍스', color: 'green', link: 'https://whalespace.io' },
+          { id: 'b2', title: 'PaL 게시판', color: 'purple-gradient', link: 'https://' }
+        ]
+      }
+    };
+
+    const INITIAL_USERS = [
+      { id: '1', name: '강유주', pass: '6701', role: 'student', canFine: false, canPay: false, profileUrl: '', jobId: '', jobChecklist: {} },
+      { id: '2', name: '고윤서', pass: '6702', role: 'student', canFine: false, canPay: false, profileUrl: '', jobId: '', jobChecklist: {} },
+      { id: '3', name: '공윤호', pass: '6703', role: 'student', canFine: false, canPay: false, profileUrl: '', jobId: '', jobChecklist: {} },
+      { id: 'admin', name: '관리자', pass: '1111', role: 'admin', canFine: true, canPay: true, profileUrl: '' }
+    ];
+
+    const INITIAL_JOBS = [
+      { id: 'j1', title: '흰우유해적단 -상-', desc: '아침에 급식소에서 우유를 가져옵니다.', salary: 6000, maxUsers: 1, isHiring: true, allowSelfApply: false },
+      { id: 'j2', title: '흰우유해적단 -하-', desc: '다 먹은 우유를 모아 다시 급식소로 가져다 놓습니다.', salary: 5000, maxUsers: 1, isHiring: true, allowSelfApply: false },
+      { id: 'j3', title: '매의 눈', desc: '학생들의 1인1역 수행 상태를 점검합니다.', salary: 5800, maxUsers: 1, isHiring: true, allowSelfApply: false },
+      { id: 'j18', title: '청 소', desc: '교실을 청소합니다.', salary: 6000, maxUsers: 5, isHiring: true, allowSelfApply: false }
+    ];
+
+    const INITIAL_STOCKS = [
+      { id: 's_samsung', ticker: 'KRX:005930', name: '삼성전자', icon: '📱', isVirtual: false, currentPrice: 800, prevPrice: 800, lastUpdated: 0 },
+      { id: 's_virtual', ticker: 'CLASS', name: '6학년3반컴퍼니', icon: '🏫', isVirtual: true, currentPrice: 1000, prevPrice: 1000, lastUpdated: 0 }
+    ];
+
+    const INITIAL_BANK = [{ id: 'test', name: '테스트용 (1분)', days: 0, hours: 0, minutes: 1, seconds: 0, rate: 0.01, rateText: '1.0%' }];
+    const INITIAL_STORE = [{ id: 's1', name: '간식', desc: '마가렛트', price: 2000, stock: 26, icon: '🍪', refundable: true, refundLimitHours: 24, isPaused: false, allowUseIfPaused: true }];
+    const INITIAL_DONATION_GOALS = [{ id: 'g1', title: '도비는 자유예요', desc: '1시간 자유시간 획득', current: 0, target: 100000 }];
+
     // ============================================================================
     // [3] 유틸리티
     // ============================================================================
