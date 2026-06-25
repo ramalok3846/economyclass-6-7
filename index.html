@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>경제교실 of PaL Co.</title>
+  <title>HH 경제교실</title>
 
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -17,7 +17,6 @@
   <!-- Firebase Compat (v10) - RTDB 전용 -->
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-check-compat.js"></script>
 
   <style>
     .scrollbar-hide::-webkit-scrollbar { display: none; }
@@ -41,33 +40,16 @@
     const { useState, useEffect, useRef } = React;
 
     // ============================================================================
-    // [1] Firebase 설정 (1단계에서 복사한 진짜 코드)
+    // [1] Firebase 설정
     // ============================================================================
     const firebaseConfig = {
-      apiKey: "AIzaSyBbj_2MMoU_lxE0z67YMnC4qmXu4-Dbbz8", 
-      authDomain: "class-chat-6-7.firebaseapp.com",
-      databaseURL: "https://class-chat-6-7-default-rtdb.asia-southeast1.firebasedatabase.app/",
-      projectId: "class-chat-6-7",
-      storageBucket: "class-chat-6-7.firebasestorage.app",
-      messagingSenderId: "147081351163",
-      appId: "1:147081351163:web:34e945417373985945855e",
-      measurementId: "G-JLXVMZCJYG"
+      databaseURL: "https://class-chat-6-7-default-rtdb.asia-southeast1.firebasedatabase.app/"
     };
     if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-
-    // ============================================================================
-    // [2] 지정한 도메인만 허용하는 방어막 (App Check) - compat 버전용 수정!
-    // ============================================================================
-    const appCheck = firebase.appCheck();
-    appCheck.activate(
-      '6LePGBAtAAAAAJUzKogrWuXB6k6Kb2j4EjTO3uOM',
-      true
-    );
-
     const db = firebase.database();
 
     // ============================================================================
-    // [2.5] 초기 데이터
+    // [2] 초기 데이터
     // ============================================================================
     const DEFAULT_TABS = [
       { id: 'dashboard', label: '대시보드', order: 1 },
